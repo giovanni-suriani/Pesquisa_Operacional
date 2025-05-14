@@ -1200,11 +1200,13 @@ I0 = [["x3"], ["x4"], ["x5"]]
 x = [["x1"], ["x2"], ["x3"], ["x4"], ["x5"]] 
 
 
+solve_simplex_cruzeiro(A, b, c, x, I0, type_func="min")
+
 #print(get_x_non_basic(x=x, xb=I0))
 
 
-solve_simplex_sergio(A, b, c, x, I0, type_func="min")
-solve_simplex_cruzeiro(A, b, c, x, I0, type_func="min")
+
+#solve_simplex_sergio(A, b, c, x, I0, type_func="min")
 
 # bateria_de_testes_solve_simplex(test_get_A_column=True, 
 #                                 test_get_c_basic=True, 
