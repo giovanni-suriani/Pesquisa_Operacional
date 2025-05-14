@@ -1,6 +1,7 @@
 ## Se quiser usar o simplex do cruzeiro, va em simplex_algorithm.py as matrizes A, b e c ja na forma padrao e rode, os resultados apareceram em forma de log
 
 **Exemplo Rodando**
+
 ![image](https://github.com/user-attachments/assets/a9317ca9-1e0b-4569-9e9d-f88283a2261f)
 
 **Exemplo comentado do primeiro exercicio da lista 1 do CRUZEIRO**
