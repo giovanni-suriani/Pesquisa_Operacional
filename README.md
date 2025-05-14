@@ -13,3 +13,4 @@ x = [["x1"], ["x2"], ["x3"], ["x4"], ["x5"]]
 
 
 solve_simplex_cruzeiro(A, b, c, x, I0, type_func="min")
+![image](https://github.com/user-attachments/assets/a9317ca9-1e0b-4569-9e9d-f88283a2261f)
