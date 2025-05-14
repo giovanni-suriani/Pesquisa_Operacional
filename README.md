@@ -16,3 +16,7 @@ x = [["x1"], ["x2"], ["s1"], ["s2"], ["s3"]]
 
 solve_simplex_cruzeiro(A, b, c, x, I0, type_func="min")
 ```
+
+```bash
+python simplex_algorithm.py
+```
