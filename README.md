@@ -18,5 +18,5 @@ solve_simplex_cruzeiro(A, b, c, x, I0, type_func="min")
 ```
 
 ```bash
-python simplex_algorithm.py
+python simplex_algorithm.py # Rodar o script
 ```
