@@ -24,7 +24,7 @@ if not logger.hasHandlers() and __name__ == '__main__':
     logger = logging.getLogger("top_module")  # __main__
     print(f"sem handler, executando como top_module o arquivo {os.path.basename(__file__)}")
 
-logger.info(f"nome arquivo = {os.path.basename(__file__)}")    
+logger.debug(f"nome arquivo = {os.path.basename(__file__)}")    
 
 def str_in_line_matrixes(matrixes:list):
     """
@@ -107,6 +107,25 @@ def get_index_based_on_x(dummy_x:str, x:list):
         
     raise ValueError(f"Variável {dummy_x} não encontrada na lista de variáveis.")
 
+def concatenate_matrices_vertical(matrices:list[Matrix])->list:
+    """
+    Concatena as linhas de várias matrizes em uma única resultante
+    Args:
+        matrices (list): Lista de matrizes a serem concatenadas.
+    Returns:
+        list: matriz resultante em forma de list.
+    """
+    n_cols = matrices[0].cols
+    for matrix in matrices:
+        if matrix.cols != n_cols:
+            raise ValueError("Todas as matrizes devem ter o mesmo número de colunas.")
+    
+    
+    
+    result_matrix = Matrix.vstack(*matrices)
+    
+    return result_matrix.tolist()
+
 def concatenate_matrices_horizontal(matrices:list)->list:
     """
     Concatena as colunas de várias matrizes em uma única resultante
@@ -115,14 +134,14 @@ def concatenate_matrices_horizontal(matrices:list)->list:
     Returns:
         list: matriz resultante.
     """
-    n_rows = len(matrices[0][0])
+    n_rows = matrices[0].rows
     for matrix in matrices:
-        if len(matrix[0]) != n_rows:
+        if matrix.rows != n_rows:
             raise ValueError("Todas as matrizes devem ter o mesmo número de linhas.")
     
-    result_matrix = Matrix.hstack(*matrices).tolist()
+    result_matrix = Matrix.hstack(*matrices)
     
-    return result_matrix
+    return result_matrix.tolist()
 
 def get_A_column(A:list, index:int=-1, dummy_x:str="", x:list=[]):
     """
@@ -761,9 +780,6 @@ def solve_simplex_cruzeiro(A:list, b:list, c:list, x:list, initial_basis:list=[]
         iteration += 1
     logger.debug(f"base final: {basis}, solucao = {basic_sol}, iteracao {iteration}")
  
-
-    
- 
 def bateria_de_testes_solve_simplex(test_calculate_reduced_costs:bool=False, 
                                            test_calculate_simplex_multiplier_vector:bool=False,
                                            test_calculate_basic_solution:bool=False,
@@ -1172,13 +1188,15 @@ def bateria_de_testes_solve_simplex(test_calculate_reduced_costs:bool=False,
 
 # Exemplo de chamada para o simplex do cruzeiro
 
-A = [[1,  1, 1, 0, 0],
+""" A = [[1,  1, 1, 0, 0],
     [1, -1, 0, 1, 0],
     [-1, 1, 0, 0, 1]]
 b = [[6], [4], [4]]
 c = [-1, -2, 0, 0, 0]
 I0 = [["s1"], ["s2"], ["s3"]]
 x = [["x1"], ["x2"], ["s1"], ["s2"], ["s3"]]
+
+ """
 
 """ A = [[1, -1, 1, 0],
      [-1, 1, 0, 1]]
@@ -1190,7 +1208,7 @@ x = [["x1"], ["x2"], ["s1"], ["s2"]] """
 
 
 
-""" 
+
 A = [[2,  1, 1, 0, 0],
     [1, 2, 0, 1, 0],
     [0, 1, 0, 0, 1]]
@@ -1198,9 +1216,9 @@ b = [[8], [7], [3]]
 c = [-1, -1, 0, 0, 0]
 I0 = [["x3"], ["x4"], ["x5"]]
 x = [["x1"], ["x2"], ["x3"], ["x4"], ["x5"]] 
- """
 
-solve_simplex_cruzeiro(A, b, c, x, I0, type_func="min")
+
+#solve_simplex_cruzeiro(A, b, c, x, I0, type_func="min")
 
 #print(get_x_non_basic(x=x, xb=I0))
 

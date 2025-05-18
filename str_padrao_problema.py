@@ -512,16 +512,16 @@ def monta_f_obj(tipo_funcao:str, constantes_e_variaveis:dict, standard_form:bool
     logger.debug(f"Função objetivo montada: {funcao_objetivo}")
     return funcao_objetivo.strip()
 
-def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Fraction, standard_form:tuple = (False, "s1"),
-                    detailed:bool = False, decimal:bool = False) -> tuple:
+def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Fraction, standard_form:list= (False, "s1"),
+                    detailed:bool = False, decimal:bool = False, start_from_slack_var:str = "s1",
+                    start_from_neg_var:str="x'1") -> tuple:
     """
     Monta a restrição a partir dos componentes extraídos.
     Args:
-        constantes_e_variaveis_lhs (dict): coeficientes extraídos do lado esquerdo
+        constantes_e_variav|eis_lhs (dict): coeficientes extraídos do lado esquerdo
         simbolo (str): símbolo de comparação
         valor_rhs (Fraction): valor do lado direito da restrição
-        standard_form (tuple): se True, retorna a restricoes de variavel 
-                                e outras na forma padrão (x1>=0, x2 + s1 = 2)
+        standard_form (bool): se True, retorna a função na forma padrão (MIN) com a restricao no formato de =
         detailed (bool): se True, retorna a função com termos em 0
         decimal (bool): se True transforma os números em decimal
     Returns:
@@ -1440,30 +1440,80 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 logger.error(f"Erro no teste: {test}, valor calculado: {variables}, valor esperado: {result}")
                 raise e
     
-    # Testes para monta_restricao
+            
     if test_monta_restricao:
         logger.info("Iniciando testes para monta_restricao")
-        t1 = ("2x1 + π2 + 3x4 ≥ 2/3", (False, "s1"), {"detailed": True, "decimal": False}, ("2x1 + π2 + 3x4 ≥ 2/3", 0))
-        t2 = ("2x1 + π2 + 3x4 ≥ 2/3", (True, "s1"), {"detailed": True, "decimal": False}, ("-2x1 - π2 - 3x4 + s1 = -2/3", 1))
-        t3 = ("2x1 + π2 + 3x4 <= 2/3", (True, "s1"), {"detailed": True, "decimal": False}, ("2x1 + π2 + 3x4 + s1 = 2/3", 1))
-        t4 = ("x1 >= 0", (False, "s1"), {"detailed": False, "decimal": False}, ("x1 >= 0", 0))    
-        t5 = ("x1 <= 0", (False, "s1"), {"detailed": False, "decimal": False}, ("x1 <= 0", 0))
-        t6 = ("x1 <= 0", (True, "s1"), {"detailed": False, "decimal": False}, ("x1 >= 0", 2))
-        t7 = ("x1 irrestrito", (False, "s1"), {"detailed": False, "decimal": False}, ("x1 irrestrito", 0))
-        t8 = ("π2 irrestrito", (False, "s1"), {"detailed": False, "decimal": False}, ("π2 irrestrito", 0))
-        testes = [t1, t2, t3, t4, t5, t6, t7, t8]
-        
-        for teste in testes:
-            #teste = t5
-            constantes_lhs, variaveis_lhs, simbolo, valor_rhs = extrai_restricao(teste[0])
+
+        testes = [
+            {
+                "expr": "2x1 + π2 + 3x4 ≥ 2/3",
+                "standard_form": (False, "s1"),
+                "options": {"detailed": True, "decimal": False},
+                "result": ("2x1 + π2 + 3x4 ≥ 2/3", 0)
+            },
+            {
+                "expr": "2x1 + π2 + 3x4 ≥ 2/3",
+                "standard_form": (True, "s1"),
+                "options": {"detailed": True, "decimal": False},
+                "result": ("-2x1 - π2 - 3x4 + s1 = -2/3", 1)
+            },
+            {
+                "expr": "2x1 + π2 + 3x4 <= 2/3",
+                "standard_form": (True, "s1"),
+                "options": {"detailed": True, "decimal": False},
+                "result": ("2x1 + π2 + 3x4 + s1 = 2/3", 1)
+            },
+            {
+                "expr": "x1 >= 0",
+                "standard_form": (False, "s1"),
+                "options": {"detailed": False, "decimal": False},
+                "result": ("x1 >= 0", 0)
+            },
+            {
+                "expr": "x1 <= 0",
+                "standard_form": (False, "s1"),
+                "options": {"detailed": False, "decimal": False},
+                "result": ("x1 <= 0", 0)
+            },
+            {
+                "expr": "x1 <= 0",
+                "standard_form": (True, "s1"),
+                "options": {"detailed": False, "decimal": False},
+                "result": ("x1 >= 0", 2)
+            },
+            {
+                "expr": "x1 irrestrito",
+                "standard_form": (False, "s1"),
+                "options": {"detailed": False, "decimal": False},
+                "result": ("x1 irrestrito", 0)
+            },
+            {
+                "expr": "π2 irrestrito",
+                "standard_form": (False, "s1"),
+                "options": {"detailed": False, "decimal": False},
+                "result": ("π2 irrestrito", 0)
+            }
+        ]
+
+        for test in testes:
+            constantes_lhs, variaveis_lhs, simbolo, valor_rhs = extrai_restricao(test["expr"])
             constantes_e_variaveis_lhs = dict(zip(variaveis_lhs, constantes_lhs))
+
             try:
-                valor = monta_restricao(constantes_e_variaveis_lhs, simbolo, valor_rhs, standard_form=teste[1], 
-                                                            detailed=teste[2]["detailed"], decimal=teste[2]["decimal"])
-                assert valor == teste[3]
+                valor = monta_restricao(
+                    constantes_e_variaveis_lhs,
+                    simbolo,
+                    valor_rhs,
+                    standard_form=test["standard_form"],
+                    detailed=test["options"]["detailed"],
+                    decimal=test["options"]["decimal"]
+                )
+                assert valor == test["result"]
             except AssertionError as e:
-                logger.error(f"Erro no teste: {teste[0]}, valor calculado: {valor}, valor esperado: {teste[3]}")
+                logger.error(f"Erro no teste: {test['expr']}")
+                logger.error(f"valor calculado: {valor}, valor esperado: {test['result']}")
                 raise e
+
         
     # Testes para str_problem_to_standard_form
     if test_forma_padrao:
@@ -1769,6 +1819,16 @@ def check_health_status():
         logger.error(e)
         raise e
 
+f_obj = {
+    "func":"Max 2x'1 + π2 + 3x4",
+    "restricoes":[
+        "2x'1 + π2 + 3x4 = 2/3",
+    ],
+}
+
+
+# print(f"f_ = {extrai}")
+
 # bateria_testes_str_padrao_problema(test_monta_f_obj=True)
 
 #bateria_testes_utilitarios(test_standard_display_variable=True)
@@ -1798,3 +1858,6 @@ def check_health_status():
 
 
 # π, Φ, λ
+
+
+#  Dois casos novos para restricoes : variavel irrestrita e variavel < 0
