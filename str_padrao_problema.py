@@ -10,14 +10,14 @@ Fraction.__str__
 import settings
 
 # logging.config.dictConfig(settings.LOGGING)
-#logging.config.dictConfig(settings.LOGGING)
+# logging.config.dictConfig(settings.LOGGING)
 logger = logging.getLogger("top_module.child")  
 
 if not logger.hasHandlers() and __name__ == '__main__':
     logging.config.dictConfig(settings.LOGGING)
     logger = logging.getLogger("top_module")  # __main__
     print(f"sem handler, executando como top_module")
-    
+
 logger.debug("str_padrao_problema.py")
 
 VERBOSE = settings.VERBOSE
@@ -197,7 +197,14 @@ def check_le_zero(constants_lhs:list, value_rhs:list, symbol:str = "≤") -> boo
                 return True
     return False
 
-def check_variable_constraint_positive(constraint:str) -> bool:
+def check_variable_constraint_ge_le__positive(constraint:str) -> bool:
+    """ 
+    Checa se a restricao eh do tipo x1 >= 0 ou  -x1 <= 0, ou seja, positivas
+    Args:
+        constraint (str): string da restrição, ex: "x4 ≥ 0"
+    Returns:
+        bool: True se a restrição for do tipo x >= 0 ou x <= 0, False caso contrário
+    """
     constants_lhs, variables_lhs, symbol, value_rhs = extrai_restricao(constraint)
     if check_ge_zero(constants_lhs, value_rhs, symbol):
         if all(constant >= 0 for constant in constants_lhs):
@@ -208,6 +215,39 @@ def check_variable_constraint_positive(constraint:str) -> bool:
             return True
         
     return False
+
+def check_variable_constraint(constraint:str) -> bool:
+    """
+    Checa se a restrição é de variavel x >= 0 ou x <= 0, irrestrita, shattered constraint (x1 = x'1 - x''1).
+    Args:
+        constraint (str): string da restrição, ex: "x4 ≥ 0"
+    Returns:
+        bool: True se a restrição for do tipo x >= 0 ou x <= 0, False caso contrário
+        qual tipo: (>=, <=, irrestrito, shatter)
+    """
+    constants_lhs, variables_lhs, symbol, value_rhs = extrai_restricao(constraint)
+    if check_ge_zero(constants_lhs, value_rhs, symbol):
+        if all(constant >= 0 for constant in constants_lhs):
+            return True, ">="
+        
+    elif check_le_zero(constants_lhs, value_rhs, symbol):
+        if all(constant <= 0 for constant in constants_lhs):
+            return True, "<="
+        
+    elif check_variable_unbounded_shatter_constraint(constraint):
+        return True, "shatter"
+    
+    non_zero_vars = 0
+    for constant in constants_lhs:
+        if constant != 0:
+            non_zero_vars += 1
+            
+    if non_zero_vars == 1 and symbol == "irrestrito":
+        return True, "irrestrito"
+        
+        
+    
+    return False, ""
 
 def check_variable_constraint_std_form(constraint:str) -> bool:
     """
@@ -221,12 +261,27 @@ def check_variable_constraint_std_form(constraint:str) -> bool:
             return True
     return False
 
-def variable_constraint_to_std_form(constraint:str) -> bool:
-    constants_lhs, variables_lhs, symbol, value_rhs = extrai_restricao(constraint)
-    if check_variable_unbounded_shatter_constraint(constraint):
+def variable_constraint_to_std_form(variable_constraint:str) -> bool:
+    """ 
+    Transforma uma restricao de variavel em uma restricao do tipo xi >= 0\n
+    Funciona para restricoes xi irrestrito tambem
+    Args:
+        variable_constraint (str): restricao a ser verificada
+    Returns:
+        list: Constraints na forma padrao
+    """
+    return_constraints = []
+    constants_lhs, variables_lhs, symbol, value_rhs = extrai_restricao(variable_constraint)
+    # Checando se a restricao é do tipo x1 = x'1 - x''1
+    if check_variable_unbounded_shatter_constraint(variable_constraint):
+        new_var_constrain1 = f"{variable_constraint[0]}'{variable_constraint[1:]} >= 0"
+        new_var_constrain2 = f"{variable_constraint[0]}''{variable_constraint[1:]} >= 0"
+        return_constraints.append(new_var_constrain1, new_var_constrain2)
         #logger.debug(f"Variável irrestrita encontrada na restrição: {constraint}")
-        return f"{constraint} >= 0"
+        return return_constraints
     
+    
+    # Checando se a restricao
     non_zero_vars = 0 
     variable_foo = None
     for variable, constant in zip(variables_lhs, constants_lhs):
@@ -236,12 +291,20 @@ def variable_constraint_to_std_form(constraint:str) -> bool:
     
     
     
-    if non_zero_vars == 0:
-        return f"{variable_foo} >= 0" 
+    if non_zero_vars == 1:
+    # Checando se a restricao é do tipo irrestrito
+        if symbol == "irrestrito":
+             new_var_constrain1 = f"{variable_constraint[0]}'{variable_constraint[1:]} >= 0"
+             new_var_constrain2 = f"{variable_constraint[0]}''{variable_constraint[1:]} >= 0"
+             return_constraints.append(new_var_constrain1, new_var_constrain2)
+             return return_constraints
+    # Se a restricao é do tipo >= ou <= ou =
+        else:
+            if check_variable_constraint_ge_le__positive(variable_constraint):
+                return_constraints.append(variable_constraint)
+                return return_constraints
     
-    raise ValueError(f"")
-    
-        
+    raise ValueError(f"Perdeu é máfia, brincadeira, deu ruim na linha {sys._getframe().f_lineno}")
 
 def remove_ge_le_constraints(constraints:list) -> list:
     """
@@ -353,9 +416,16 @@ def change_variable_sign_in_constraints(variable:str, constraints:list, detailed
         constants, variables, symbol, value_rhs = extrai_restricao(constraint)
         constants_and_variables = dict(zip(variables, constants))
         if variable in variables:
-            if standard_form and (check_ge_zero() or check_le_zero):
+            check_var_constraint,_ = check_variable_constraint(constraint)
+            if standard_form and check_var_constraint:
+                new_constraints = variable_constraint_to_std_form(constraint)
                 # Se for padrão, troca o sinal, apenas adiciona a variável zerada
-                constants_and_variables[variable] = 1
+                if len(new_constraints) == 1:
+                    constraints[i] = new_constraints[0]
+                elif len(new_constraints) == 2:
+                    constraints[i] = new_constraints[0]
+                    constraints[i+1] = new_constraints[1]
+                continue
             constants_and_variables[variable] = -constants_and_variables[variable]
             constraints[i], _ = monta_restricao(constants_and_variables, symbol, value_rhs, detailed=detailed)
     
@@ -931,7 +1001,6 @@ def str_problem_to_standard_form(f_obj:str, constraints:list, detailed:bool = Fa
             constantes_e_variaveis_fobj = dict(zip(variables, constants))
             change_variable_sign_in_constraints(variavel, new_restricoes, detailed=detailed, standard_form=True)
     
-    
     # Modificando a f_objetivo e a lista de restricoes para variaveis marcadas como irrestrita_modificadas
     if variaveis_irrestritas_modificadas:
         for variavel in variaveis_irrestritas_modificadas:
@@ -1085,9 +1154,7 @@ def std_matrix_to_str_problem(A:list, b:list, c:list, x:list, tipo_funcao:str = 
     return std_problem.strip()
 
 
-
 """ Parte de testes """
-
 
 
 def bateria_testes_utilitarios(test_standard_display_variable:bool=False,
@@ -1453,8 +1520,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
         teste5 = "MAX - 1.5x1 + 0x2 + 0x3"
         teste6 = "max -3/2x1 - 2x2 + 0x3"
         teste7 = "max 2.1x''1 + 3.2x'2 + 2.4Φ''3"
-        
-        
+
         assert extrai_f_obj(teste1) == ("max", "3/2π1 + 2y2", [Fraction(3, 2), Fraction(2)], ["π1", "y2"])
         assert extrai_f_obj(teste2) == ("MIN", "3/2Φ1 + 2Φ2 + 3Φ3", [Fraction(3, 2), Fraction(2), Fraction(3)], ["Φ1", "Φ2", "Φ3"])
         assert extrai_f_obj(teste3) == ("MIN", "1.5x1", [Fraction(3, 2)], ["x1"])
@@ -1462,8 +1528,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
         assert extrai_f_obj(teste5) == ("MAX", "- 1.5x1 + 0x2 + 0x3", [Fraction(-3, 2), Fraction(0, 1), Fraction(0, 1)], ["x1", "x2", "x3"])
         assert extrai_f_obj(teste6) == ("max", "-3/2x1 - 2x2 + 0x3", [Fraction(-3, 2), Fraction(-2), Fraction(0, 1)], ["x1", "x2", "x3"])
         assert extrai_f_obj(teste7) == ("max", "2.1x''1 + 3.2x'2 + 2.4Φ''3", [Fraction(21, 10), Fraction(16, 5), Fraction(12, 5)], ["x''1", "x'2", "Φ''3"])
-    
-    
+
     # Testes para extrair_restricao
     if test_extrai_restricao:
         logger.info(f"Iniciando testes para extrair_restricao")
@@ -1472,15 +1537,15 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
         t3 = "-x1 + p2 + s3 = -2"
         t4 = "x1 irrestrito"
         t5 = "x''1 + x'2 + x3 ≥ 0"
-        
-        #print(extrai_restricao(t5))
+
+        # print(extrai_restricao(t5))
         assert extrai_restricao(t1) == ([Fraction(2, 1), Fraction(1, 1), Fraction(3, 1)], ["x1", "π2", "x4"], "≥", 
                                         Fraction(2, 3))
         assert extrai_restricao(t2) == ([Fraction(1, 1), Fraction(2, 1)], ["π1", "x2"], "≤", Fraction(26, 5))
         assert extrai_restricao(t3) == ([Fraction(-1, 1), Fraction(1, 1), Fraction(1, 1)], ["x1", "p2", "s3"], "=", Fraction(-2, 1))
         assert extrai_restricao(t4) == ([1],["x1"], "irrestrito", 0)
         assert extrai_restricao(t5) == ([Fraction(1, 1), Fraction(1, 1), Fraction(1, 1)], ["x''1", "x'2", "x3"], "≥", Fraction(0, 1))
-    
+
     # Testes para monta_f_obj
     if test_monta_f_obj:
         logger.info("Iniciando testes para monta_f_obj")
@@ -1573,8 +1638,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 "decimal": True,
                 "result": "min -x'1 - 1.5x''2 + x3" 
             }
-        
-       
+
         tests = [t1, t2, t3, t4, t5, t6, t7, t8]
         for i, test in enumerate(tests):
             tipo_funcao = test["tipo_funcao"]
@@ -1590,7 +1654,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 logger.error(f"Erro no teste: {i + 1}")
                 logger.error(f"\nvalor calculado: {calculated}\nvalor  esperado: {result}")
                 raise e
-        
+
     # Testes para extract_variables_problem
     if test_extract_variables_problem:
         logger.info("Iniciando testes para extract_variables_problem")
@@ -1640,7 +1704,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
             except AssertionError as e:
                 logger.error(f"Erro no teste: {test}, valor calculado: {variables}, valor esperado: {result}")
                 raise e
-    
+
     # Testes para monta_restricao
     if test_monta_restricao:
         logger.info("Iniciando testes para monta_restricao")
@@ -1725,13 +1789,13 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
             "slack_var": "s1",
             "result": ("π2 = π''2 - π'1", VARIAVEL_IRRESTRITA_MODIFICADA)
         }
-        
+
         testes = [
             t1, t2, t3, t4, t5, t6, t7, t8, t9
         ]
 
         for i, test in enumerate(testes):
-            #TODO: PAREI AQUI CARAMBA
+            # TODO: PAREI AQUI CARAMBA
             expr = test["expr"]
             constants_lhs, variables_lhs, symbol, value_rhs = extrai_restricao(expr)
             constants_and_variables_lhs = dict(zip(variables_lhs, constants_lhs))
@@ -1779,7 +1843,6 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                                         "x1 >= 0",
                                         "x2 >= 0"]}
                 }
-        
         t2 = {
             "f_obj": "max π1 + 2π2",
             "constraints": [
@@ -1802,28 +1865,67 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 ]
             }
         }
-                
+        t3 = {
+            "f_obj": "Min 2x1 + x2 + 3x4",
+            "constraints": [
+                "2x1 + x2 + x4 <= 2/3",
+                "x1 + x2 + x3 <= 1",
+                "x1 >= 0",
+                "x2 <= 0",
+                "x3 >= 0",
+                "x4 irrestrito",
+            ],
+            "detailed": True,
+            "decimal": False,
+            "result": {
+                "f_obj": "Min 2x1 - x2 + 3x'4 - 3x''4",
+                "constraints": [
+                    "2x1 - x2 + x'4 + x''4 + s1 = 2/3",
+                    "x1 - x2 + x3 + s2 = 1",
+                    "x1 >= 0",
+                    "x2 >= 0",
+                    "x3 >= 0" "x'4 >= 0",
+                    "x''4 >= 0",
+                ],
+            },
+        }
+        t4 = {
+            "f_obj": "Max 2x1 + x2 + 3x4",
+            "constraints": [
+                "2x1 + x2 + x4 <= 2/3",
+                "x1 - x2 + x3 <= 1",
+                "x1 >= 0",
+                "x2 = x'2 - x''2",
+                "x3 >= 0",
+                "x4 >= 0 ",
+            ],
+            "result": {
+                "f_obj": "Min -2x1 - x'2 + x''2 + 3x4",
+                "constraints": [
+                    "2x1 + x'2 - x''2 + x4 + s1 = 2/3",
+                    "x1 - x'2 + x''2 + x3 + s2 = 1",
+                    "x1 >= 0",
+                    "x'2 >= 0",
+                    "x''2 >= 0",
+                    "x3 >= 0",
+                    "x4 >= 0",
+                ],
+            },
+        }
+
         # TODO:
-        problem3 = ("""max π1 + 2π2
-            2π1 + π2 ≥ 4
-            7π1 + π2 <= 1
-            -π2 = 2
-            π1 <= 0
-            π2 irrestrito""", {"detailed": True, "decimal": False}) 
-        
-        
-        
-        tests = [t1, t2]
-        #problems = [problem2]
+       
+        tests = [t1, t2, t3, t4]
+        # problems = [problem2]
         for i, test in enumerate(tests):
             f_obj = test["f_obj"]
             constraints = test["constraints"]
             detailed = test["detailed"]
             decimal = test["decimal"]
             result = test["result"]
-            
+
             f_obj, constraints = str_problem_to_standard_form(f_obj, constraints, detailed=detailed, decimal=decimal)
-            
+
             try:
                 assert f_obj == result["f_obj"]
                 assert constraints == result["constraints"]
@@ -1832,7 +1934,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 logger.error(f"\nvalor calculado: {f_obj}, \nvalor esperado: {result['f_obj']}")
                 logger.error(f"restrições calculadas: {constraints}, restrições esperadas: {result['constraints']}")
                 raise e
-        
+
     # Testes para str_problem_to_std_form_matrix
     if test_problema_padrao_matriz:
         logger.info("Iniciando testes para std_matrix_to_str_problem")
@@ -1877,19 +1979,18 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 "x": ["π1", "π2"]
             }
         }
-        
-        
+
         tests = [t1, t2]
-        
+
         for test in tests:
             f_obj = test["f_obj"]
             constraints = test["constraints"]
             standard_form = test["standard_form"]
             decimal = test["decimal"]
             result = test["result"]
-            
+
             A, b, c, x = str_problem_to_std_form_matrix(f_obj, constraints, standard_form,decimal)
-            
+
             try:
                 assert c == result["c"]
                 assert b == result["b"]
@@ -1900,7 +2001,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 logger.error(f"\nvalor calculado: {c}\nvalor  esperado: {result['c']}")
                 logger.error(f"\nrestrições calculadas: {b}\nrestrições  esperadas: {result['b']}")
                 raise e
-    
+
     # Testes para std_matrix_to_str_problem
     if test_matriz_para_problema_padrao:
         logger.info("Iniciando testes para std_matrix_to_str_problem")
@@ -1939,7 +2040,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 ]
             }
         }
-        
+
         t2 ={ 
             "A":[
                 [-2, -1, 1, 0],
@@ -1963,7 +2064,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 ]
             }
         }
-        
+
         t3 ={ 
             "A":[
                 [-2, -1, 1, 0],
@@ -1987,9 +2088,9 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 ]
             }
         }
-        
+
         tests = [t1, t2, t3]
-        
+
         for test in tests:
             A = test["A"]
             b = test["b"]
@@ -2000,12 +2101,12 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
             restricoes_simbolo = test["restricoes_simbolo"]
             detailed = test["detailed"]
             decimal = test["decimal"]
-            
+
             f_obj, constraints = std_matrix_to_str_problem(A, b, c, x, tipo_funcao=tipo_funcao,
                                                            standard_form=standard_form,
                                                            restricoes_simbolos=restricoes_simbolo,
                                                            detailed=detailed, decimal=decimal)
-            
+
             try:
                 assert f_obj == test["result"]["f_obj"]
                 assert constraints == test["result"]["constraints"]
@@ -2014,7 +2115,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 logger.error(f"valor calculado: {f_obj}, valor esperado: {test['result']['f_obj']}")
                 logger.error(f"restrições calculadas: {constraints}, restrições esperadas: {test['result']['constraints']}")
                 raise e
-    
+
     # Testes para extract_constraints_signs
     if test_extract_constraints_signs:
         logger.info("Iniciando testes para extract_constraints_signs")
@@ -2023,9 +2124,9 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
         t3 = "-x1 + p2 + s3 = -2"
         t4 = "x1 irrestrito"
         tests = [t1, t2, t3, t4]
-        
+
         assert extract_constraints_signs(tests) == ["≥", "<=", "=", "irrestrito"]
- 
+
     # Testes para assemble_variables_constraints
     if test_assemble_variables_constraints:
         logger.info("Iniciando testes para assemble_variables_constraints")
@@ -2036,7 +2137,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
         t3 = {"variables":["x1","x2","x3","x4"] ,"symbols":[], "is_vars_on_standard_form":True, 
               "result": ["x1 >= 0","x2 >= 0","x3 >= 0","x4 >= 0"]}
         tests = [t1, t2, t3]
-        
+
         for test in tests:
             variables = test["variables"]
             symbols = test["symbols"]
@@ -2068,45 +2169,20 @@ def check_health_status():
 #                                    test_monta_f_obj=True,
 #                                    test_monta_restricao=True,)
 
-t1 = {
-    "func":"Min 2x1 + x2 + 3x4",
-    "constraints":[
-        "2x1 + x2 + x4 <= 2/3",
-        "x1 + x2 + x3 <= 1",
-        "x1 >= 0",
-        "x2 <= 0",
-        "x3 >= 0",
-        "x4 irrestrito",
-    ],
-    "result":("Min 2x1 - x2 + 3x'4 - 3x''4",
-              ["2x1 - x2 + x'4 + x''4 + s1 = 2/3",
-               "x1 - x2 + x3 + s2 = 1",
-               "x1 >= 0",
-               "x2 >= 0",
-               "x3 >= 0"
-               "x'4 >= 0",
-               "x''4 >= 0"])
-}
 
-func = t1["func"]
-constraints = t1["constraints"]
-result = t1["result"]
 
-f_obj_std, constraints_std = str_problem_to_standard_form(func, constraints, detailed = False)
+bateria_testes_str_padrao_problema(test_forma_padrao=True)
 
-print(f_obj_std)
-print("\n".join(constraints_std))
-
-#check_health_status()
-#print(f"f_ = {extrai_f_obj(f_obj['func'])}, restricoes = {extrai_restricao(f_obj['restricoes'][0])}")
+# check_health_status()
+# print(f"f_ = {extrai_f_obj(f_obj['func'])}, restricoes = {extrai_restricao(f_obj['restricoes'][0])}")
 
 # bateria_testes_str_padrao_problema(test_monta_f_obj=True)
 
-#bateria_testes_utilitarios(test_standard_display_variable=True)
+# bateria_testes_utilitarios(test_standard_display_variable=True)
 
 # bateria_testes_str_padrao_problema(teste_forma_padrao=True,teste_problema_padrao_matriz=True)
 
-#check_health_status()
+# check_health_status()
 
 
 # print(extrai_restricao("pi1 irrestrito"))
