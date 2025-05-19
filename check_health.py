@@ -12,8 +12,9 @@ logger.getChild("top_module.child").setLevel(logging.DEBUG) # Logger filho de to
 
 #VERBOSE = True
 
-#sa.bateria_de_testes_solve_simplex(test_get_trivial_basis=True)
+# sa.bateria_de_testes_solve_simplex(test)
 #sa.check_health_status()
+spp.bateria_testes_str_padrao_problema(test_monta_f_obj=True)
 spp.check_health_status()
 #pd.check_health_status()
 

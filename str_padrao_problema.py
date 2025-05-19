@@ -293,7 +293,7 @@ def extrair_constantes_e_variaveis(expr:str, extract_pure_constants:bool = False
             - variaveis (list[str]): lista de variáveis
     """
     padrao = re.compile(
-        r'(?P<constante_associada>[+-]?\s*(?:\d+(?:\.\d+)?|\d+/\d+)?)(?P<variavel>\w\d+)'  # aceita int, decimal, fração
+        r'(?P<constante_associada>[+-]?\s*(?:\d+(?:\.\d+)?|\d+/\d+)?)(?P<variavel>\w([^\w\d])?\d+)'  # aceita int, decimal, fração
         r'|' # ou
         r'(?P<constante_pura>\b[+-]?\s*(?:\d+(?:\.\d+)?|\d+/\d+)?\b)',  
         re.UNICODE
@@ -363,7 +363,7 @@ def extrai_f_obj(f_obj:str) -> tuple:
     r'(?P<funcao>('
         r'(?:[-+]?\s*'                  # sinal opcional
         r'(?:\d+(?:\.\d+)?|\d+/\d+)?'   # constante: inteiro, decimal ou fração
-        r'\s*\w\d+\s*)+'                # variável com número (ex: π1, x2)
+        r'\s*\w([^\w\d])?\d+\s*)+'                # variável com número (ex: π1, x2)
     r'))',
     re.UNICODE
     )
@@ -513,8 +513,8 @@ def monta_f_obj(tipo_funcao:str, constantes_e_variaveis:dict, standard_form:bool
     return funcao_objetivo.strip()
 
 def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Fraction, standard_form:list= (False, "s1"),
-                    detailed:bool = False, decimal:bool = False, start_from_slack_var:str = "s1",
-                    start_from_neg_var:str="x'1") -> tuple:
+                    detailed:bool = False, decimal:bool = False, slack_var:str = "s1",
+                    neg_var:str="x'1") -> tuple:
     """
     Monta a restrição a partir dos componentes extraídos.
     Args:
@@ -1826,8 +1826,8 @@ f_obj = {
     ],
 }
 
-
-# print(f"f_ = {extrai}")
+check_health_status()
+print(f"f_ = {extrai_f_obj(f_obj['func'])}, restricoes = {extrai_restricao(f_obj['restricoes'][0])}")
 
 # bateria_testes_str_padrao_problema(test_monta_f_obj=True)
 
