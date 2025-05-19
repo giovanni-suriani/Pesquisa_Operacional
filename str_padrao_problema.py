@@ -25,6 +25,23 @@ VERBOSE = settings.VERBOSE
 VARIAVEL_ADICIONADA = 1
 
 VARIAVEL_ALTERADA = 2
+
+VARIAVEL_IRRESTRITA_MODIFICADA = 3
+
+
+regex_variable_expr = r'\s*\w([^\w\d]){0,2}\d+\s*'
+
+# padrao = re.compile(
+#     r'(?i)'  # ignore maiúsculas/minúsculas
+#     r'(?P<tipo_funcao>max|min)\s+'  # grupo nomeado: tipo_funcao
+#     r'(?P<funcao>('
+#         r'(?:[-+]?\s*'                  # sinal opcional
+#         r'(?:\d+(?:\.\d+)?|\d+/\d+)?'   # constante: inteiro, decimal ou fração
+#         r'\s*\w([^\w\d]){0,2}\d+\s*)+'                # variável com número (ex: π1, x2)
+#     r'))',
+#     re.UNICODE
+#     )
+
 """ 
 class LinhaRestricao:
         def __init__(self, restricao:str, detailed:bool = False):
@@ -129,6 +146,17 @@ def display_matrix_f_obj(A: list, b: list, c: list, x: list) -> None:
     c_x_row = _side_by_side_with_labels(c_m, x_m, "[ c ]", "[ x ]")
     return "\n" + a_b_row + "\n\n" + c_x_row
 
+def check_variable_unbounded_shatter_constraint(constraint:str) -> bool:
+    re.compile(
+        regex_variable_expr + r'\s*=\s*' + regex_variable_expr + r'\s*\-\s*' + regex_variable_expr
+    )
+    if re.search(
+        r'\b' + regex_variable_expr + r'\s*=\s*' + regex_variable_expr + r'\s*\+\s*' + regex_variable_expr,
+        constraint
+    ):
+        return True
+    return False
+
 def check_ge_zero(constantes_lhs:list, valor_rhs:list, simbolo:str = "≥") -> bool:
     """
     Checa se a restrição é maior ou igual a zero.
@@ -168,6 +196,52 @@ def check_le_zero(constants_lhs:list, value_rhs:list, symbol:str = "≤") -> boo
             if value_rhs == 0:
                 return True
     return False
+
+def check_variable_constraint_positive(constraint:str) -> bool:
+    constants_lhs, variables_lhs, symbol, value_rhs = extrai_restricao(constraint)
+    if check_ge_zero(constants_lhs, value_rhs, symbol):
+        if all(constant >= 0 for constant in constants_lhs):
+            return True
+    
+    elif check_le_zero(constants_lhs, value_rhs, symbol):
+        if all(constant <= 0 for constant in constants_lhs):
+            return True
+        
+    return False
+
+def check_variable_constraint_std_form(constraint:str) -> bool:
+    """
+    Checa se a restrição está na forma padrão (xi >= 0).
+    Args:
+    """
+    allowed_values = [0,1]
+    constants_lhs, variables_lhs, symbol, value_rhs = extrai_restricao(constraint)
+    if check_ge_zero(constants_lhs, value_rhs, symbol):
+        if all(constant in allowed_values for constant in constants_lhs):
+            return True
+    return False
+
+def variable_constraint_to_std_form(constraint:str) -> bool:
+    constants_lhs, variables_lhs, symbol, value_rhs = extrai_restricao(constraint)
+    if check_variable_unbounded_shatter_constraint(constraint):
+        #logger.debug(f"Variável irrestrita encontrada na restrição: {constraint}")
+        return f"{constraint} >= 0"
+    
+    non_zero_vars = 0 
+    variable_foo = None
+    for variable, constant in zip(variables_lhs, constants_lhs):
+        if constant != 0:
+            non_zero_vars += 1
+            variable_foo = variable
+    
+    
+    
+    if non_zero_vars == 0:
+        return f"{variable_foo} >= 0" 
+    
+    raise ValueError(f"")
+    
+        
 
 def remove_ge_le_constraints(constraints:list) -> list:
     """
@@ -214,7 +288,30 @@ def flip_symbol_in_constraint(constraint:str, flip_lhs:bool=True, flip_rhs:bool=
         logger.warning(f"Simbolo de igualdade passado, sem troca de sinal")
     return monta_restricao(dict(zip(variables_lhs, constants_lhs)), symbol, value_rhs)[0]
 
-def change_variable_sign_in_constraints(variable:str, constraints:list, detailed = False) -> None:
+def change_unbounded_variable_format_in_f_obj(variable:str, f_obj:str, detailed:bool=False) -> str:
+    """
+    Troca o formato da variável irrestrita na função objetivo.
+    Args:
+        variable (str): variável a ter o formato trocado (ex: 'x1')
+        f_obj (str): função objetivo como string (ex: 'min 2x1 + x2')
+        detailed (bool): se True, retorna a função com termos em 0
+    Returns:
+        str: função objetivo com a variável irrestrita no formato x'1 + x''1
+    """
+    function_type, _, constants, variables = extrai_f_obj(f_obj)
+    constants_and_variables = dict(zip(variables, constants))
+    if variable in variables:
+        new_var1 = variable[0] + "'" + variable[1:]
+        new_var2 = variable[0] + "''" + variable[1:]
+        constants_and_variables[new_var1] = constants_and_variables[variable]
+        constants_and_variables[new_var2] = -constants_and_variables[variable]
+        del constants_and_variables[variable]
+    else:
+        raise ValueError(f"Variável '{variable}' não encontrada na função objetivo.")
+    
+    return monta_f_obj(function_type, constants_and_variables, standard_form=False, detailed=detailed)
+
+def change_unbounded_variable_format_in_constraint(variable:str, constraints:list, detailed = False) -> str:
     """ 
     Troca o sinal da variável nas restrições
     Args:
@@ -225,9 +322,40 @@ def change_variable_sign_in_constraints(variable:str, constraints:list, detailed
         None, procedimento
     """
     for i, constraint in enumerate(constraints):
+        if check_variable_unbounded_shatter_constraint(constraint):
+            #logger.debug(f"Variável irrestrita encontrada na restrição: {constraint}")
+            continue
         constants, variables, symbol, value_rhs = extrai_restricao(constraint)
         constants_and_variables = dict(zip(variables, constants))
         if variable in variables:
+            new_var1 = variable[0] + "'" + variable[1:]
+            new_var2 = variable[0] + "''" + variable[1:]
+            constants_and_variables[new_var1] = constants_and_variables[variable]
+            constants_and_variables[new_var2] = -constants_and_variables[variable]
+            del constants_and_variables[variable]
+            constraints[i], _ = monta_restricao(constants_and_variables, symbol, value_rhs, detailed=detailed)
+    
+    return constraints
+
+def change_variable_sign_in_constraints(variable:str, constraints:list, detailed = False, standard_form = False) -> None:
+    """ 
+    Troca o sinal da variável nas restrições
+    Args:
+        variable (str): variável a ter o sinal trocado
+        restricoes (list): lista de restrições
+        detailed (bool): se True, retorna a função com termos em 0
+    Returns:
+        None, procedimento
+    """
+    
+    
+    for i, constraint in enumerate(constraints):
+        constants, variables, symbol, value_rhs = extrai_restricao(constraint)
+        constants_and_variables = dict(zip(variables, constants))
+        if variable in variables:
+            if standard_form and (check_ge_zero() or check_le_zero):
+                # Se for padrão, troca o sinal, apenas adiciona a variável zerada
+                constants_and_variables[variable] = 1
             constants_and_variables[variable] = -constants_and_variables[variable]
             constraints[i], _ = monta_restricao(constants_and_variables, symbol, value_rhs, detailed=detailed)
     
@@ -293,7 +421,7 @@ def extrair_constantes_e_variaveis(expr:str, extract_pure_constants:bool = False
             - variaveis (list[str]): lista de variáveis
     """
     padrao = re.compile(
-        r'(?P<constante_associada>[+-]?\s*(?:\d+(?:\.\d+)?|\d+/\d+)?)(?P<variavel>\w([^\w\d])?\d+)'  # aceita int, decimal, fração
+        r'(?P<constante_associada>[+-]?\s*(?:\d+(?:\.\d+)?|\d+/\d+)?)(?P<variavel>\w([^\w\d]){0,2}\d+)'  # aceita int, decimal, fração
         r'|' # ou
         r'(?P<constante_pura>\b[+-]?\s*(?:\d+(?:\.\d+)?|\d+/\d+)?\b)',  
         re.UNICODE
@@ -363,7 +491,8 @@ def extrai_f_obj(f_obj:str) -> tuple:
     r'(?P<funcao>('
         r'(?:[-+]?\s*'                  # sinal opcional
         r'(?:\d+(?:\.\d+)?|\d+/\d+)?'   # constante: inteiro, decimal ou fração
-        r'\s*\w([^\w\d])?\d+\s*)+'                # variável com número (ex: π1, x2)
+        + regex_variable_expr +
+        r')+'# variável com número (ex: π1, x2)
     r'))',
     re.UNICODE
     )
@@ -402,13 +531,16 @@ def extrai_restricao(restricao:str) -> tuple:
         r'([-+]?\s*'
         r'(\d+(\.\d+)?|\d+/\d+)?'
         #r'\s*[^\W\d_]\d+\s*)+'                 # variável com número (ex: π1, x2)
-        r'\s*[^\W\d_]\d+\s*)+'                 # variável com número (ex: π1, x2)
+        + regex_variable_expr +
+        r')+'                 # variável com número (ex: π1, x2)
     r'))\s*'
     r'(?:'                                      # ← início da escolha entre dois caminhos (opcionalidade)
         r'(?P<simbolo_com_rhs><=|>=|<|>|=|≥|≤)'  # símbolo de comparação
         r'\s*'
         r'(?P<restricao_rhs>('
-            r'[-+]?\s*(?:\d+/\d+|\d+(?:\.\d+)?)'
+            r'([-+]?\s*(?:\d+/\d+|\d+(?:\.\d+)?))'
+            r'|' 
+            r'(\s*' + regex_variable_expr + r'\s*' + regex_variable_expr + r')'
         r'))'
     r'|'
         r'(?P<simbolo_irrestrito>irrestrito)'   # literal "irrestrito", sem RHS
@@ -512,9 +644,9 @@ def monta_f_obj(tipo_funcao:str, constantes_e_variaveis:dict, standard_form:bool
     logger.debug(f"Função objetivo montada: {funcao_objetivo}")
     return funcao_objetivo.strip()
 
-def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Fraction, standard_form:list= (False, "s1"),
+def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Fraction, standard_form:bool = False,
                     detailed:bool = False, decimal:bool = False, slack_var:str = "s1",
-                    neg_var:str="x'1") -> tuple:
+                    unbounded_vars:str="x'1") -> tuple:
     """
     Monta a restrição a partir dos componentes extraídos.
     Args:
@@ -546,16 +678,21 @@ def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Frac
     change_var = 0
     
     if simbolo == "irrestrito":
-        if standard_form[0] is False:
+        if standard_form is False:
             if VERBOSE:
                 logger.debug(f"{standard_display_variable(abs(constant_foo), variable_foo, True)} irrestrito")
             return f"{standard_display_variable(abs(constant_foo), variable_foo, True)} irrestrito", 0
-        if standard_form[0] is True:
+        if standard_form is True:
             logger.warning(f"CUIDADO, condição de variavel puramente irrestrita NAO implementada")
-            return f"{standard_display_variable(abs(constant_foo), variable_foo, True)} irrestrito", 0
+            new_var1 = f"{variable_foo[0]}'{variable_foo[1:]}"
+            new_var2 = f"{variable_foo[0]}''{variable_foo[1:]}"
+            linha1 = f"{variable_foo} = {new_var1} - {new_var2}"
+            linha2 = f"{standard_display_variable(1, new_var1, True)} ≥ 0"
+            linha3 = f"{standard_display_variable(1, new_var2, True)} ≥ 0"
+            return f"{linha1}\n{linha2}\n{linha3}", VARIAVEL_IRRESTRITA_MODIFICADA
             
     # Checando se é restrição x1 >= 0 ou <= 0
-    if standard_form[0] is True:
+    if standard_form is True:
         if non_zero_var == 1:
             if (simbolo == ">=" or simbolo == "≥") and valor_rhs == 0 :
                 if constant_foo < 0:
@@ -582,14 +719,14 @@ def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Frac
                     return f"{lhs} >= {valor_rhs}", change_var
     
     # Deixando na forma de menor igual (<=)
-    if standard_form[0] is True:
+    if standard_form is True:
         if simbolo == ">=" or simbolo == "≥":
             simbolo = "<="
             valor_rhs = -valor_rhs
             for variavel, constante in constantes_e_variaveis_lhs.items():
                 constantes_e_variaveis_lhs[variavel] = -constante
         if simbolo != "=":
-            constantes_e_variaveis_lhs[standard_form[1]] = 1
+            constantes_e_variaveis_lhs[slack_var] = 1
             simbolo = "="
             change_var = 1
             
@@ -733,31 +870,76 @@ def str_problem_to_standard_form(f_obj:str, constraints:list, detailed:bool = Fa
     constantes_e_variaveis_fobj = dict(zip(variaveis, constantes))
     slack_var = 1
     new_restricoes = []
+    variaveis_nao_descritas_na_f_obj = []
+    variaveis_alteradas = []
+    variaveis_irrestritas_modificadas = []
     
     for restricao in restricoes:
         constantes_lhs, variaveis_lhs, simbolo, valor_rhs = extrai_restricao(restricao)
         constantes_e_variaveis_lhs = dict(zip(variaveis_lhs, constantes_lhs))
-        forma_padrao_restricao, change_var = monta_restricao(constantes_e_variaveis_lhs, simbolo, valor_rhs, standard_form=(True, "s" + str(slack_var)),
-                                                             detailed=detailed, decimal=decimal)
+        forma_padrao_restricao, change_var = monta_restricao(constantes_e_variaveis_lhs, simbolo, valor_rhs, standard_form=True,
+                                                             detailed=detailed, decimal=decimal, slack_var="s" + str(slack_var))
+        
+        # Variaveis que nao estao na funcao objetivo
+        for variable in variaveis_lhs:
+            if variable not in constantes_e_variaveis_fobj:
+                variaveis_nao_descritas_na_f_obj.append(variable)
+        
+        # Variaveis de folga
         if change_var == VARIAVEL_ADICIONADA:
-            # Adicionando variaveis de folga na f_obj
             constantes_e_variaveis_fobj["s" + str(slack_var)] = 0
             slack_var += 1
         
+        # Variaveis com sinal alterados
         elif change_var == VARIAVEL_ALTERADA:
             for variavel, constante in constantes_e_variaveis_lhs.items():
                 if constante != 0:
+                    variaveis_alteradas.append(variavel)
                 # Trocando o sinal da variavel na funcao objetivo
-                    constantes_e_variaveis_fobj[variavel] = -constantes_e_variaveis_fobj[variavel]
+                    # constantes_e_variaveis_fobj[variavel] = -constantes_e_variaveis_fobj[variavel]
+                # Trocando sinal da variavel nas equacoes atuasi
+                    # change_variable_sign_in_constraints(variavel, new_restricoes)
+        
+        # Variaveis irrestritas modificadas
+        elif change_var == VARIAVEL_IRRESTRITA_MODIFICADA:
+            for variavel, constante in constantes_e_variaveis_lhs.items():
+                if constante != 0:
+                # Trocando o sinal da variavel na funcao objetivo
+                    variaveis_irrestritas_modificadas.append(variavel)
+                    # constantes_e_variaveis_fobj[variavel] = -constantes_e_variaveis_fobj[variavel]
                 # Trocando sinal da variavel nas equacoes
-                    change_variable_sign_in_constraints(variavel, new_restricoes)
-                    
+                    # change_variable_sign_in_constraints(variavel, new_restricoes)
+            continue
+        
         new_restricoes.append(forma_padrao_restricao)
         
         if VERBOSE:
             logger.debug(f"forma_padrao_restricao {restricao.lstrip()} SE TRANSFORMA EIN {forma_padrao_restricao}")
     #monta_f_obj(tipo_funcao, constantes_e_variaveis, standard_form=True, detailed=detailed, decimal=decimal)
+    
     # Adicionando 0's nas variaveis que nao aparecem nas restricoes, mas estao na funcao objetivo
+    if variaveis_nao_descritas_na_f_obj:
+        for variavel in variaveis_nao_descritas_na_f_obj:
+            constantes_e_variaveis_fobj[variavel] = 0
+    
+    # Modificando a f_objetivo e a lista de restricoes para variaveis marcadas como alteradas
+    if variaveis_alteradas:
+        for variavel in variaveis_alteradas:
+            constantes_e_variaveis_fobj[variavel] = -constantes_e_variaveis_fobj[variavel]
+            new_f = change_variable_sign_in_f_obj(variavel, f_obj, detailed=detailed)
+            _, _, constants, variables = extrai_f_obj(new_f)
+            constantes_e_variaveis_fobj = dict(zip(variables, constants))
+            change_variable_sign_in_constraints(variavel, new_restricoes, detailed=detailed, standard_form=True)
+    
+    
+    # Modificando a f_objetivo e a lista de restricoes para variaveis marcadas como irrestrita_modificadas
+    if variaveis_irrestritas_modificadas:
+        for variavel in variaveis_irrestritas_modificadas:
+            new_f = change_unbounded_variable_format_in_f_obj(variavel, f_obj, detailed=True)
+            _, _, constants, variables = extrai_f_obj(new_f)
+            constantes_e_variaveis_fobj = dict(zip(variables, constants))
+            change_unbounded_variable_format_in_constraint(variavel, new_restricoes, detailed=detailed)
+    
     if detailed:
         restricoes = new_restricoes
         new_restricoes = []
@@ -1270,6 +1452,8 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
         teste4 = "MIN -1.5x1 + 0x2 + 0x3"
         teste5 = "MAX - 1.5x1 + 0x2 + 0x3"
         teste6 = "max -3/2x1 - 2x2 + 0x3"
+        teste7 = "max 2.1x''1 + 3.2x'2 + 2.4Φ''3"
+        
         
         assert extrai_f_obj(teste1) == ("max", "3/2π1 + 2y2", [Fraction(3, 2), Fraction(2)], ["π1", "y2"])
         assert extrai_f_obj(teste2) == ("MIN", "3/2Φ1 + 2Φ2 + 3Φ3", [Fraction(3, 2), Fraction(2), Fraction(3)], ["Φ1", "Φ2", "Φ3"])
@@ -1277,6 +1461,8 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
         assert extrai_f_obj(teste4) == ("MIN", "-1.5x1 + 0x2 + 0x3", [Fraction(-3, 2), Fraction(0, 1), Fraction(0, 1)], ["x1", "x2", "x3"])
         assert extrai_f_obj(teste5) == ("MAX", "- 1.5x1 + 0x2 + 0x3", [Fraction(-3, 2), Fraction(0, 1), Fraction(0, 1)], ["x1", "x2", "x3"])
         assert extrai_f_obj(teste6) == ("max", "-3/2x1 - 2x2 + 0x3", [Fraction(-3, 2), Fraction(-2), Fraction(0, 1)], ["x1", "x2", "x3"])
+        assert extrai_f_obj(teste7) == ("max", "2.1x''1 + 3.2x'2 + 2.4Φ''3", [Fraction(21, 10), Fraction(16, 5), Fraction(12, 5)], ["x''1", "x'2", "Φ''3"])
+    
     
     # Testes para extrair_restricao
     if test_extrai_restricao:
@@ -1285,12 +1471,15 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
         t2 = "π1 + 2x2 ≤ 5.2"
         t3 = "-x1 + p2 + s3 = -2"
         t4 = "x1 irrestrito"
+        t5 = "x''1 + x'2 + x3 ≥ 0"
         
+        #print(extrai_restricao(t5))
         assert extrai_restricao(t1) == ([Fraction(2, 1), Fraction(1, 1), Fraction(3, 1)], ["x1", "π2", "x4"], "≥", 
                                         Fraction(2, 3))
         assert extrai_restricao(t2) == ([Fraction(1, 1), Fraction(2, 1)], ["π1", "x2"], "≤", Fraction(26, 5))
         assert extrai_restricao(t3) == ([Fraction(-1, 1), Fraction(1, 1), Fraction(1, 1)], ["x1", "p2", "s3"], "=", Fraction(-2, 1))
         assert extrai_restricao(t4) == ([1],["x1"], "irrestrito", 0)
+        assert extrai_restricao(t5) == ([Fraction(1, 1), Fraction(1, 1), Fraction(1, 1)], ["x''1", "x'2", "x3"], "≥", Fraction(0, 1))
     
     # Testes para monta_f_obj
     if test_monta_f_obj:
@@ -1372,9 +1561,21 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 "decimal": True,
                 "result": "min -x1 - 1.5x2 + x3" 
             }
+        t8 = {
+                "tipo_funcao": "max",
+                "constantes_e_variaveis": {
+                    "x'1": 1.0,
+                    "x''2": Fraction(3,2),
+                    "x3": -1.0
+                    },
+                "standard_form": True,
+                "detailed": True,
+                "decimal": True,
+                "result": "min -x'1 - 1.5x''2 + x3" 
+            }
         
        
-        tests = [t1, t2, t3, t4, t5, t6, t7]
+        tests = [t1, t2, t3, t4, t5, t6, t7, t8]
         for i, test in enumerate(tests):
             tipo_funcao = test["tipo_funcao"]
             constantes_e_variaveis = test["constantes_e_variaveis"]
@@ -1440,81 +1641,123 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 logger.error(f"Erro no teste: {test}, valor calculado: {variables}, valor esperado: {result}")
                 raise e
     
-            
+    # Testes para monta_restricao
     if test_monta_restricao:
         logger.info("Iniciando testes para monta_restricao")
 
+        t1 = {
+            "expr": "2x1 + π2 + 3x4 ≥ 2/3",
+            "standard_form": False,
+            "detailed": True,
+            "decimal": False,
+            "slack_var": "s1",
+            "result": ("2x1 + π2 + 3x4 ≥ 2/3", 0)
+        }
+        t2 = {
+            "expr": "2x1 + π2 + 3x4 ≤ 2/3",
+            "standard_form": False,
+            "detailed": True,
+            "decimal": False,
+            "slack_var": "s1",
+            "result": ("2x1 + π2 + 3x4 ≤ 2/3", 0)
+        }
+        t3 = {
+            "expr": "2x1 + π2 + 3x4 = 2/3",
+            "standard_form": False,
+            "detailed": True,
+            "decimal": False,
+            "slack_var": "s1",
+            "result": ("2x1 + π2 + 3x4 = 2/3", 0)
+        }
+        t4 = {
+            "expr": "2x1 + π2 + 3x4 ≥ 2/3",
+            "standard_form": True,
+            "detailed": True,
+            "decimal": False,
+            "slack_var": "s1",
+            "result": ("-2x1 - π2 - 3x4 + s1 = -2/3", VARIAVEL_ADICIONADA)
+        }
+        t5 = {
+            "expr": "x1 >= 0",
+            "standard_form": False,
+            "detailed": False,
+            "decimal": False,
+            "slack_var": "s1",
+            "result": ("x1 >= 0", 0)
+        }
+        t6 = {
+            "expr": "x1 <= 0",
+            "standard_form": False,
+            "detailed": False,
+            "decimal": False,
+            "slack_var": "s1",
+            "result": ("x1 <= 0", 0)
+        }
+        t7 = {
+            "expr": "x1 <= 0",
+            "standard_form": True,
+            "detailed": False,
+            "decimal": False,
+            "slack_var": "s1",
+            "result": ("x1 >= 0", VARIAVEL_ALTERADA)
+        }
+        t8 = {
+            "expr": "x1 = 0",
+            "standard_form": False,
+            "detailed": False,
+            "decimal": False,
+            "slack_var": "s1",
+            "result": ("x1 = 0", 0)
+        }
+        t9 = {
+            "expr": "π2 irrestrito",
+            "standard_form": False,
+            "detailed": False,
+            "decimal": False,
+            "slack_var": "s1",
+            "result": ("π2 irrestrito", 0)
+        }
+        t10 = {
+            "expr": "π2 irrestrito",
+            "standard_form": False,
+            "detailed": False,
+            "decimal": False,
+            "slack_var": "s1",
+            "result": ("π2 = π''2 - π'1", VARIAVEL_IRRESTRITA_MODIFICADA)
+        }
+        
         testes = [
-            {
-                "expr": "2x1 + π2 + 3x4 ≥ 2/3",
-                "standard_form": (False, "s1"),
-                "options": {"detailed": True, "decimal": False},
-                "result": ("2x1 + π2 + 3x4 ≥ 2/3", 0)
-            },
-            {
-                "expr": "2x1 + π2 + 3x4 ≥ 2/3",
-                "standard_form": (True, "s1"),
-                "options": {"detailed": True, "decimal": False},
-                "result": ("-2x1 - π2 - 3x4 + s1 = -2/3", 1)
-            },
-            {
-                "expr": "2x1 + π2 + 3x4 <= 2/3",
-                "standard_form": (True, "s1"),
-                "options": {"detailed": True, "decimal": False},
-                "result": ("2x1 + π2 + 3x4 + s1 = 2/3", 1)
-            },
-            {
-                "expr": "x1 >= 0",
-                "standard_form": (False, "s1"),
-                "options": {"detailed": False, "decimal": False},
-                "result": ("x1 >= 0", 0)
-            },
-            {
-                "expr": "x1 <= 0",
-                "standard_form": (False, "s1"),
-                "options": {"detailed": False, "decimal": False},
-                "result": ("x1 <= 0", 0)
-            },
-            {
-                "expr": "x1 <= 0",
-                "standard_form": (True, "s1"),
-                "options": {"detailed": False, "decimal": False},
-                "result": ("x1 >= 0", 2)
-            },
-            {
-                "expr": "x1 irrestrito",
-                "standard_form": (False, "s1"),
-                "options": {"detailed": False, "decimal": False},
-                "result": ("x1 irrestrito", 0)
-            },
-            {
-                "expr": "π2 irrestrito",
-                "standard_form": (False, "s1"),
-                "options": {"detailed": False, "decimal": False},
-                "result": ("π2 irrestrito", 0)
-            }
+            t1, t2, t3, t4, t5, t6, t7, t8, t9
         ]
 
-        for test in testes:
-            constantes_lhs, variaveis_lhs, simbolo, valor_rhs = extrai_restricao(test["expr"])
-            constantes_e_variaveis_lhs = dict(zip(variaveis_lhs, constantes_lhs))
+        for i, test in enumerate(testes):
+            #TODO: PAREI AQUI CARAMBA
+            expr = test["expr"]
+            constants_lhs, variables_lhs, symbol, value_rhs = extrai_restricao(expr)
+            constants_and_variables_lhs = dict(zip(variables_lhs, constants_lhs))
+            standard_form = test["standard_form"]
+            detailed = test["detailed"]
+            decimal = test["decimal"]
+            slack_var = test["slack_var"]
+            result = test["result"]
+
+            calculated_expr, s1_value = monta_restricao(constants_and_variables_lhs,
+                                                        simbolo=symbol,
+                                                        valor_rhs=value_rhs, 
+                                                        standard_form=standard_form, 
+                                                        detailed=detailed, 
+                                                        decimal=decimal,
+                                                        slack_var=slack_var)
 
             try:
-                valor = monta_restricao(
-                    constantes_e_variaveis_lhs,
-                    simbolo,
-                    valor_rhs,
-                    standard_form=test["standard_form"],
-                    detailed=test["options"]["detailed"],
-                    decimal=test["options"]["decimal"]
-                )
-                assert valor == test["result"]
+                assert calculated_expr == result[0]
+                assert s1_value == result[1]
             except AssertionError as e:
-                logger.error(f"Erro no teste: {test['expr']}")
-                logger.error(f"valor calculado: {valor}, valor esperado: {test['result']}")
+                logger.error(f"Erro no teste: {i + 1}")
+                logger.error(f"\nvalor calculado: {calculated_expr}\nvalor esperado: {result[0]}")
+                logger.error(f"s1_value calculado: {s1_value},\n s1_value esperado: {result[1]}")
                 raise e
 
-        
     # Testes para str_problem_to_standard_form
     if test_forma_padrao:
         logger.info("Iniciando testes para str_problem_to_standard_form")
@@ -1572,7 +1815,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
         
         tests = [t1, t2]
         #problems = [problem2]
-        for test in tests:
+        for i, test in enumerate(tests):
             f_obj = test["f_obj"]
             constraints = test["constraints"]
             detailed = test["detailed"]
@@ -1585,8 +1828,8 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 assert f_obj == result["f_obj"]
                 assert constraints == result["constraints"]
             except AssertionError as e:
-                logger.error(f"Erro no teste: {test['f_obj']}")
-                logger.error(f"valor calculado: {f_obj}, valor esperado: {result['f_obj']}")
+                logger.error(f"Erro no teste: {i + 1}")
+                logger.error(f"\nvalor calculado: {f_obj}, \nvalor esperado: {result['f_obj']}")
                 logger.error(f"restrições calculadas: {constraints}, restrições esperadas: {result['constraints']}")
                 raise e
         
@@ -1819,15 +2062,43 @@ def check_health_status():
         logger.error(e)
         raise e
 
-f_obj = {
-    "func":"Max 2x'1 + π2 + 3x4",
-    "restricoes":[
-        "2x'1 + π2 + 3x4 = 2/3",
+
+# bateria_testes_str_padrao_problema(test_extrai_f_obj=True,
+#                                    test_extrai_restricao=True,
+#                                    test_monta_f_obj=True,
+#                                    test_monta_restricao=True,)
+
+t1 = {
+    "func":"Min 2x1 + x2 + 3x4",
+    "constraints":[
+        "2x1 + x2 + x4 <= 2/3",
+        "x1 + x2 + x3 <= 1",
+        "x1 >= 0",
+        "x2 <= 0",
+        "x3 >= 0",
+        "x4 irrestrito",
     ],
+    "result":("Min 2x1 - x2 + 3x'4 - 3x''4",
+              ["2x1 - x2 + x'4 + x''4 + s1 = 2/3",
+               "x1 - x2 + x3 + s2 = 1",
+               "x1 >= 0",
+               "x2 >= 0",
+               "x3 >= 0"
+               "x'4 >= 0",
+               "x''4 >= 0"])
 }
 
-check_health_status()
-print(f"f_ = {extrai_f_obj(f_obj['func'])}, restricoes = {extrai_restricao(f_obj['restricoes'][0])}")
+func = t1["func"]
+constraints = t1["constraints"]
+result = t1["result"]
+
+f_obj_std, constraints_std = str_problem_to_standard_form(func, constraints, detailed = False)
+
+print(f_obj_std)
+print("\n".join(constraints_std))
+
+#check_health_status()
+#print(f"f_ = {extrai_f_obj(f_obj['func'])}, restricoes = {extrai_restricao(f_obj['restricoes'][0])}")
 
 # bateria_testes_str_padrao_problema(test_monta_f_obj=True)
 
