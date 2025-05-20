@@ -30,8 +30,8 @@ VARIAVEL_IRRESTRITA_MODIFICADA = 3
 
 display_variable_priority = {
     "normal": 0,
-    "slack": 1,
-    "artificial":2,
+    "slack": 100,
+    "artificial":200,
 }
 
 
@@ -267,6 +267,19 @@ def check_variable_constraint_std_form(constraint:str) -> bool:
         if all(constant in allowed_values for constant in constants_lhs):
             return True
     return False
+
+def remove_variable_constraints(constraints:list) -> None:
+    """
+    Remove as restrições de variáveis de uma lista de restrições.
+    Args:
+        restricoes (list): lista de restrições
+    Returns:
+        None, procedimento
+    """
+    for i in range(len(constraints)-1, -1, -1):
+        check_var_constraint, _ = check_variable_constraint(constraints[i])
+        if check_var_constraint:
+            del constraints[i]
 
 def variable_constraint_to_std_form(variable_constraint:str) -> bool:
     """ 
@@ -624,7 +637,7 @@ def extrai_restricao(restricao:str) -> tuple:
         r'(?P<restricao_rhs>('
             r'([-+]?\s*(?:\d+/\d+|\d+(?:\.\d+)?))'
             r'|' 
-            r'(\s*' + regex_variable_expr + r'\s*' + regex_variable_expr + r')'
+            r'(?P<shatter>(\s*' + regex_variable_expr + r'\s*\-' + regex_variable_expr + r'))'
         r'))'
     r'|'
         r'(?P<simbolo_irrestrito>irrestrito)'   # literal "irrestrito", sem RHS
@@ -637,6 +650,8 @@ def extrai_restricao(restricao:str) -> tuple:
     restricao_simbolo = match.group("simbolo_com_rhs") or match.group("simbolo_irrestrito")
     if restricao_simbolo == "irrestrito":
         restricao_rhs = 0
+    elif match.group("shatter"):
+        restricao_rhs = match.group("shatter")
     else:
         restricao_rhs = Fraction(match.group("restricao_rhs"))
     constantes_lhs, variaveis_lhs = extrair_constantes_e_variaveis(restricao_lhs)
@@ -730,13 +745,14 @@ def monta_f_obj(tipo_funcao:str, constantes_e_variaveis:dict, standard_form:bool
         else:
             constantes_e_variaveis[variable] = (constant, "normal")
 
-    # 2. Ordenando por prioridade
+    # 2. Ordenando por prioridade && numero da variavel
     constantes_e_variaveis = dict(
         sorted(
             constantes_e_variaveis.items(),
-            key=lambda x: display_variable_priority[x[1][1]],
+            key=lambda x: display_variable_priority[x[1][1]] + int(re.search(r'\d+', x[0]).group()),
         )
     )
+   
     # 3. Retirando o label
     constantes_e_variaveis = {
         k: v[0] for k, v in constantes_e_variaveis.items()
@@ -859,7 +875,7 @@ def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Frac
     constantes_e_variaveis_lhs = dict(
         sorted(
             constantes_e_variaveis_lhs.items(),
-            key=lambda x: display_variable_priority[x[1][1]],
+            key=lambda x: display_variable_priority[x[1][1]] + int(re.search(r'\d+', x[0]).group()),
         )
     )
 
@@ -951,6 +967,7 @@ def extract_variable_constraints(constraints:list, standard_form=False) -> list:
             variable_constraints.append(constraint)
         else:
             if standard_form:
+                constraint = variable_constraint_to_std_form(constraint)
                 variable_constraints.append(constraint)
     return variable_constraints
 
@@ -963,7 +980,7 @@ def extract_non_var_constraints(constraints:list) -> list:
         list: lista de restrições que não são variáveis
     """
     non_var_constraints = constraints.copy()
-    remove_ge_le_constraints(non_var_constraints)
+    remove_variable_constraints(non_var_constraints)
     return non_var_constraints
 
 def extract_constraints_signs(restricoes:list) -> list:
@@ -1986,10 +2003,38 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 "2x1 + x2 + x4 <= 2/3",
                 "x1 - x2 + x3 <= 1",
                 "x1 >= 0",
+                "x2 irrestrito",
+                "x3 >= 0",
+                "x4 >= 0 ",
+            ],
+            "detailed": False,
+            "decimal": False,
+            "result": {
+                "f_obj": "min -2x1 - x'2 + x''2 - 3x4",
+                "constraints": [
+                    "2x1 + x'2 - x''2 + x4 + s1 = 2/3",
+                    "x1 - x'2 + x''2 + x3 + s2 = 1",
+                    "x1 >= 0",
+                    "x3 >= 0",
+                    "x4 >= 0",
+                    "x'2 >= 0",
+                    "x''2 >= 0",
+                ],
+            },
+        }
+        # Implementar esse caso t5 se for necessário
+        t5 = {
+            "f_obj": "Max 2x1 + x2 + 3x4",
+            "constraints": [
+                "2x1 + x2 + x4 <= 2/3",
+                "x1 - x2 + x3 <= 1",
+                "x1 >= 0",
                 "x2 = x'2 - x''2",
                 "x3 >= 0",
                 "x4 >= 0 ",
             ],
+            "detailed": False,
+            "decimal": False,
             "result": {
                 "f_obj": "Min -2x1 - x'2 + x''2 + 3x4",
                 "constraints": [
@@ -2006,7 +2051,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
 
         # TODO:
        
-        tests = [t3, t4]
+        tests = [t4]
         # problems = [problem2]
         for i, test in enumerate(tests):
             f_obj = test["f_obj"]
