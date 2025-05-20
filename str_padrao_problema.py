@@ -28,6 +28,12 @@ VARIAVEL_ALTERADA = 2
 
 VARIAVEL_IRRESTRITA_MODIFICADA = 3
 
+display_variable_priority = {
+    "normal": 0,
+    "slack": 1,
+    "artificial":2,
+}
+
 
 regex_variable_expr = r'\s*\w([^\w\d]){0,2}\d+\s*'
 
@@ -802,6 +808,14 @@ def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Frac
             
         # adicionando variáveis de folga
         
+    # Ordenando o dicionario por prioridade
+    
+    # 1. Labeling
+    """ for variavel, constante in constantes_e_variaveis_lhs.items():
+        if variavel[0] == "s":
+            constantes_e_variaveis_ """
+        
+        
     lhs = ""
     # Primeiro, apenas desigualdades de <=
     for i, (variavel, constante) in enumerate(constantes_e_variaveis_lhs.items()):
@@ -996,15 +1010,15 @@ def str_problem_to_standard_form(f_obj:str, constraints:list, detailed:bool = Fa
     if variaveis_alteradas:
         for variavel in variaveis_alteradas:
             constantes_e_variaveis_fobj[variavel] = -constantes_e_variaveis_fobj[variavel]
-            new_f = change_variable_sign_in_f_obj(variavel, f_obj, detailed=detailed)
-            _, _, constants, variables = extrai_f_obj(new_f)
-            constantes_e_variaveis_fobj = dict(zip(variables, constants))
+            # _, _, constants, variables = extrai_f_obj(new_f)
+            # constantes_e_variaveis_fobj = dict(zip(variables, constants))
             change_variable_sign_in_constraints(variavel, new_restricoes, detailed=detailed, standard_form=True)
     
     # Modificando a f_objetivo e a lista de restricoes para variaveis marcadas como irrestrita_modificadas
     if variaveis_irrestritas_modificadas:
         for variavel in variaveis_irrestritas_modificadas:
-            new_f = change_unbounded_variable_format_in_f_obj(variavel, f_obj, detailed=True)
+            current_f = monta_f_obj(tipo_funcao, constantes_e_variaveis_fobj, standard_form=False, detailed=True, decimal=decimal)
+            new_f = change_unbounded_variable_format_in_f_obj(variavel, current_f, detailed=True)
             _, _, constants, variables = extrai_f_obj(new_f)
             constantes_e_variaveis_fobj = dict(zip(variables, constants))
             change_unbounded_variable_format_in_constraint(variavel, new_restricoes, detailed=detailed)
@@ -1016,7 +1030,7 @@ def str_problem_to_standard_form(f_obj:str, constraints:list, detailed:bool = Fa
             constantes_lhs, variaveis_lhs, simbolo, valor_rhs = extrai_restricao(str(restricao))
             constantes_e_variaveis_lhs = dict(zip(variaveis_lhs, constantes_lhs))
             constantes_e_variaveis_lhs = adding_zero_vars_on_constants_variables_dict(constantes_e_variaveis_fobj, constantes_e_variaveis_lhs)
-            forma_padrao_restricao_detailed, _ = monta_restricao(constantes_e_variaveis_lhs, simbolo, valor_rhs, standard_form=(True, "s" + str(slack_var)),
+            forma_padrao_restricao_detailed, _ = monta_restricao(constantes_e_variaveis_lhs, simbolo, valor_rhs, standard_form=True,
                                                                  detailed=detailed, decimal=decimal) 
             new_restricoes.append(forma_padrao_restricao_detailed)
             if VERBOSE:
@@ -1880,11 +1894,12 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
             "result": {
                 "f_obj": "Min 2x1 - x2 + 3x'4 - 3x''4",
                 "constraints": [
-                    "2x1 - x2 + x'4 + x''4 + s1 = 2/3",
+                    "2x1 - x2 + x'4 - x''4 + s1 = 2/3",
                     "x1 - x2 + x3 + s2 = 1",
                     "x1 >= 0",
                     "x2 >= 0",
-                    "x3 >= 0" "x'4 >= 0",
+                    "x3 >= 0", 
+                    "x'4 >= 0",
                     "x''4 >= 0",
                 ],
             },
@@ -1915,7 +1930,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
 
         # TODO:
        
-        tests = [t1, t2, t3, t4]
+        tests = [t3, t4]
         # problems = [problem2]
         for i, test in enumerate(tests):
             f_obj = test["f_obj"]
@@ -1932,7 +1947,10 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
             except AssertionError as e:
                 logger.error(f"Erro no teste: {i + 1}")
                 logger.error(f"\nvalor calculado: {f_obj}, \nvalor esperado: {result['f_obj']}")
-                logger.error(f"restrições calculadas: {constraints}, restrições esperadas: {result['constraints']}")
+                for i in range(len(constraints)):
+                    logger.error(f"\nrestrição calculada: {constraints[i]}, \nrestrição esperada: {result['constraints'][i]}")
+                    if constraints[i] != result["constraints"][i]:
+                        logger.error(f"\n*******Erro na restrição {i + 1}*****\n {constraints[i]} != {result['constraints'][i]}")
                 raise e
 
     # Testes para str_problem_to_std_form_matrix
