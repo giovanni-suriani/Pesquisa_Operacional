@@ -760,12 +760,17 @@ def monta_f_obj(tipo_funcao:str, constantes_e_variaveis:dict, standard_form:bool
                 
     funcao_objetivo = f"{tipo_funcao} "
     for i, (variavel, constante) in enumerate(constantes_e_variaveis.items()):
-        primeira = (i == 0)
-        if primeira:
-            funcao_objetivo += standard_display_variable(constante, variavel, primeira, detailed, decimal)
+        if funcao_objetivo == f"{tipo_funcao} ":
+            primeira = True
         else:
-            funcao_objetivo += " " + standard_display_variable(constante, variavel, primeira, detailed, decimal)
-                    
+            primeira = False
+
+        if primeira:
+            funcao_objetivo += standard_display_variable(constante, variavel, primeira, show_zero=detailed, decimal=decimal)
+        else:
+            variavel = standard_display_variable(constante, variavel, primeira, show_zero=detailed, decimal=decimal)
+            if variavel != "":
+                funcao_objetivo += " " + variavel
         
     logger.debug(f"Função objetivo montada: {funcao_objetivo}")
     return funcao_objetivo.strip()
@@ -2051,7 +2056,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
 
         # TODO:
        
-        tests = [t4]
+        tests = [t1, t2, t3, t4]
         # problems = [problem2]
         for i, test in enumerate(tests):
             f_obj = test["f_obj"]
@@ -2311,9 +2316,11 @@ def check_health_status():
 #                                    test_monta_restricao=True,)
 
 
-bateria_testes_str_padrao_problema(test_forma_padrao=True)
+# bateria_testes_str_padrao_problema(test_forma_padrao=True)
 
-# check_health_status()
+
+
+check_health_status()
 # print(f"f_ = {extrai_f_obj(f_obj['func'])}, restricoes = {extrai_restricao(f_obj['restricoes'][0])}")
 
 # bateria_testes_str_padrao_problema(test_monta_f_obj=True)
