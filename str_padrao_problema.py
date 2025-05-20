@@ -222,14 +222,15 @@ def check_variable_constraint_ge_le__positive(constraint:str) -> bool:
         
     return False
 
-def check_variable_constraint(constraint:str) -> bool:
+def check_variable_constraint(constraint:str, positive_lhs:bool = False) -> bool:
     """
     Checa se a restrição é de variavel x >= 0 ou x <= 0, irrestrita, shattered constraint (x1 = x'1 - x''1).
     Args:
         constraint (str): string da restrição, ex: "x4 ≥ 0"
+        positive_lhs (bool): se True, retorna o sinal da restricao considerando o lado esquerdo como positivo
     Returns:
         bool: True se a restrição for do tipo x >= 0 ou x <= 0, False caso contrário
-        qual tipo: (>=, <=, irrestrito, shatter)
+        str: qual tipo: (>=, <=, irrestrito, shatter)
     """
     constants_lhs, variables_lhs, symbol, value_rhs = extrai_restricao(constraint)
     if check_ge_zero(constants_lhs, value_rhs, symbol):
@@ -269,22 +270,22 @@ def check_variable_constraint_std_form(constraint:str) -> bool:
 
 def variable_constraint_to_std_form(variable_constraint:str) -> bool:
     """ 
-    Transforma uma restricao de variavel em uma restricao do tipo xi >= 0\n
-    Funciona para restricoes xi irrestrito tambem
+    Transforma de maneira forcada uma restricao de variavel em uma restricao do tipo xi >= 0\n
+    Funciona para restricoes xi irrestrito, -xi <= 0 tambem
     Args:
         variable_constraint (str): restricao a ser verificada
     Returns:
         list: Constraints na forma padrao
     """
-    return_constraints = []
+    variable_constraints = []
     constants_lhs, variables_lhs, symbol, value_rhs = extrai_restricao(variable_constraint)
     # Checando se a restricao é do tipo x1 = x'1 - x''1
     if check_variable_unbounded_shatter_constraint(variable_constraint):
         new_var_constrain1 = f"{variable_constraint[0]}'{variable_constraint[1:]} >= 0"
         new_var_constrain2 = f"{variable_constraint[0]}''{variable_constraint[1:]} >= 0"
-        return_constraints.append(new_var_constrain1, new_var_constrain2)
+        variable_constraints.append(new_var_constrain1, new_var_constrain2)
         #logger.debug(f"Variável irrestrita encontrada na restrição: {constraint}")
-        return return_constraints
+        return variable_constraints
     
     
     # Checando se a restricao
@@ -302,13 +303,15 @@ def variable_constraint_to_std_form(variable_constraint:str) -> bool:
         if symbol == "irrestrito":
              new_var_constrain1 = f"{variable_constraint[0]}'{variable_constraint[1:]} >= 0"
              new_var_constrain2 = f"{variable_constraint[0]}''{variable_constraint[1:]} >= 0"
-             return_constraints.append(new_var_constrain1, new_var_constrain2)
-             return return_constraints
+             variable_constraints.append(new_var_constrain1, new_var_constrain2)
+             return variable_constraints
     # Se a restricao é do tipo >= ou <= ou =
+        elif check_variable_constraint_ge_le__positive(variable_constraint):
+                var_constraint = f"{variable_foo} >= 0"
+                variable_constraints.append(var_constraint)
+                return variable_constraints
         else:
-            if check_variable_constraint_ge_le__positive(variable_constraint):
-                return_constraints.append(variable_constraint)
-                return return_constraints
+            var_constraint = f"{variable_foo} >= 0"
     
     raise ValueError(f"Perdeu é máfia, brincadeira, deu ruim na linha {sys._getframe().f_lineno}")
 
@@ -382,7 +385,9 @@ def change_unbounded_variable_format_in_f_obj(variable:str, f_obj:str, detailed:
 
 def change_unbounded_variable_format_in_constraint(variable:str, constraints:list, detailed = False) -> str:
     """ 
-    Troca o sinal da variável nas restrições
+    Deleta a variavel passada das restricoes\n
+    Adiciona duas variaveis novas na forma x'1 - x''1\n
+    Adiciona as restricoes dessas variaveis novas
     Args:
         variable (str): variável a ter o sinal trocado
         restricoes (list): lista de restrições
@@ -390,6 +395,8 @@ def change_unbounded_variable_format_in_constraint(variable:str, constraints:lis
     Returns:
         None, procedimento
     """
+    new_var1 = variable[0] + "'" + variable[1:]
+    new_var2 = variable[0] + "''" + variable[1:]
     for i, constraint in enumerate(constraints):
         if check_variable_unbounded_shatter_constraint(constraint):
             #logger.debug(f"Variável irrestrita encontrada na restrição: {constraint}")
@@ -397,12 +404,13 @@ def change_unbounded_variable_format_in_constraint(variable:str, constraints:lis
         constants, variables, symbol, value_rhs = extrai_restricao(constraint)
         constants_and_variables = dict(zip(variables, constants))
         if variable in variables:
-            new_var1 = variable[0] + "'" + variable[1:]
-            new_var2 = variable[0] + "''" + variable[1:]
             constants_and_variables[new_var1] = constants_and_variables[variable]
             constants_and_variables[new_var2] = -constants_and_variables[variable]
             del constants_and_variables[variable]
             constraints[i], _ = monta_restricao(constants_and_variables, symbol, value_rhs, detailed=detailed)
+    
+    constraints.append(f"{new_var1} >= 0")
+    constraints.append(f"{new_var2} >= 0")
     
     return constraints
 
@@ -707,6 +715,32 @@ def monta_f_obj(tipo_funcao:str, constantes_e_variaveis:dict, standard_form:bool
             for variavel, constante in constantes_e_variaveis.items():
                 constantes_e_variaveis[variavel] = -constante
             tipo_funcao = "min"
+            
+    
+    # Ordenando o dicionario por prioridade
+
+    # 1. Labeling
+    for variable, constant in constantes_e_variaveis.items():
+        if variable[0] == "s":
+            constantes_e_variaveis[variable] = (constant, "slack")
+
+        elif variable[0] == "a":
+            constantes_e_variaveis[variable] = (constant, "artificial")
+
+        else:
+            constantes_e_variaveis[variable] = (constant, "normal")
+
+    # 2. Ordenando por prioridade
+    constantes_e_variaveis = dict(
+        sorted(
+            constantes_e_variaveis.items(),
+            key=lambda x: display_variable_priority[x[1][1]],
+        )
+    )
+    # 3. Retirando o label
+    constantes_e_variaveis = {
+        k: v[0] for k, v in constantes_e_variaveis.items()
+    }
                 
     funcao_objetivo = f"{tipo_funcao} "
     for i, (variavel, constante) in enumerate(constantes_e_variaveis.items()):
@@ -743,16 +777,16 @@ def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Frac
     # Checando se é restrição x1 >= 0 ou irrestrita
     non_zero_var = 0
     constantes_lhs = list(constantes_e_variaveis_lhs.values())
-    
+
     constant_foo = 0
     for variavel, constante in constantes_e_variaveis_lhs.items():
         if constante != 0:
             non_zero_var += 1
             constant_foo = constante
             variable_foo = variavel
-            
+
     change_var = 0
-    
+
     if simbolo == "irrestrito":
         if standard_form is False:
             if VERBOSE:
@@ -766,7 +800,7 @@ def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Frac
             linha2 = f"{standard_display_variable(1, new_var1, True)} ≥ 0"
             linha3 = f"{standard_display_variable(1, new_var2, True)} ≥ 0"
             return f"{linha1}\n{linha2}\n{linha3}", VARIAVEL_IRRESTRITA_MODIFICADA
-            
+
     # Checando se é restrição x1 >= 0 ou <= 0
     if standard_form is True:
         if non_zero_var == 1:
@@ -793,7 +827,7 @@ def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Frac
                     lhs = standard_display_variable(abs(constant_foo), variable_foo, first_var=True, decimal=decimal)
                     logger.debug(f"{lhs} >= {valor_rhs} {change_var}")
                     return f"{lhs} >= {valor_rhs}", change_var
-    
+
     # Deixando na forma de menor igual (<=)
     if standard_form is True:
         if simbolo == ">=" or simbolo == "≥":
@@ -805,17 +839,33 @@ def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Frac
             constantes_e_variaveis_lhs[slack_var] = 1
             simbolo = "="
             change_var = 1
-            
+
         # adicionando variáveis de folga
-        
+
     # Ordenando o dicionario por prioridade
-    
+
     # 1. Labeling
-    """ for variavel, constante in constantes_e_variaveis_lhs.items():
-        if variavel[0] == "s":
-            constantes_e_variaveis_ """
-        
-        
+    for variable, constant in constantes_e_variaveis_lhs.items():
+        if variable[0] == "s":
+            constantes_e_variaveis_lhs[variable] = (constant, "slack")
+
+        elif variable[0] == "a":
+            constantes_e_variaveis_lhs[variable] = (constant, "artificial")
+
+        else:
+            constantes_e_variaveis_lhs[variable] = (constant, "normal")
+
+    # 2. Ordenando por prioridade
+    constantes_e_variaveis_lhs = dict(
+        sorted(
+            constantes_e_variaveis_lhs.items(),
+            key=lambda x: display_variable_priority[x[1][1]],
+        )
+    )
+
+    # 3. Retirando os labels
+    constantes_e_variaveis_lhs = {k: v[0] for k, v in constantes_e_variaveis_lhs.items()}
+
     lhs = ""
     # Primeiro, apenas desigualdades de <=
     for i, (variavel, constante) in enumerate(constantes_e_variaveis_lhs.items()):
@@ -823,7 +873,7 @@ def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Frac
             primeira = True
         else:
             primeira = False
-        
+
         if primeira:
             lhs += standard_display_variable(constante, variavel, primeira, show_zero=detailed, decimal=decimal)
         else:
@@ -833,7 +883,7 @@ def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Frac
     if VERBOSE:
         logger.debug(f"{lhs.strip()} {simbolo} {valor_rhs} {change_var}")
     return f"{lhs.strip()} {simbolo} {valor_rhs}", change_var
-            
+
     # Segundo, variávies de folga
 
 def extract_variables_problem(f_obj:str="", constraints:list=[]) -> list:
@@ -884,6 +934,26 @@ def extract_ge_le_constraints(constraints:list, positive_lhs:bool = False) -> li
             ge_le_constraints.append(constraint)
     return ge_le_constraints
 
+def extract_variable_constraints(constraints:list, standard_form=False) -> list:
+    """
+    Extrai as restricoes de variavel de uma lista de restricoes.\n
+    restricoes da forma x >= 0 ou x <= 0 ou x irrestrito\n
+    Args:
+        restricoes (list): lista de restrições
+        standard_form (bool): se True, as variáveis estão na forma padrão( >=0 )
+    Returns:
+        list: lista de restrições que são variáveis
+    """
+    variable_constraints = []
+    for constraint in constraints:
+        check_var_constraint, _ = check_variable_constraint(constraint)
+        if check_var_constraint:
+            variable_constraints.append(constraint)
+        else:
+            if standard_form:
+                variable_constraints.append(constraint)
+    return variable_constraints
+
 def extract_non_var_constraints(constraints:list) -> list:
     """
     Extrai as restrições que não são variáveis de uma lista de restricoes.
@@ -911,9 +981,12 @@ def extract_constraints_signs(restricoes:list) -> list:
     return constraints_signs
 
 def assemble_variables_constraints(variables:list, symbols:list = [], 
-                                   is_vars_on_standard_form:bool=False) -> list:
+                                   standard_form:bool=False) -> list:
+    
     """
     Monta restricoes do tipo "x1 >= 0", "x2 <= 0", "x3 irrestrito" "x4 = 0" a partir de variáveis e sinais.
+    Difere de variable_constraint_to_std_form, pois nao trabalha com x1 = x'1 - x''1.\n
+    e so monta restricoes realmente de >= 0 para as variaveis passadas
     Args:
         variables (list): lista de variáveis
         symbols (list): lista de sinais das restrições
@@ -922,7 +995,7 @@ def assemble_variables_constraints(variables:list, symbols:list = [],
         list: lista de restricoes do tipo "x1 >= 0", "x2 <= 0", "x3 irrestrito" "x4 = 0"
     """
     variables_constraints = []
-    if not is_vars_on_standard_form:
+    if not standard_form:
         for variable, symbol in zip(variables, symbols):
             if symbol == "irrestrito":
                 variables_constraints.append(f"{standard_display_variable(1, variable, first_var=True)} {symbol}")
@@ -931,6 +1004,8 @@ def assemble_variables_constraints(variables:list, symbols:list = [],
     else:
         for variable in variables:
             variables_constraints.append(f"{standard_display_variable(1, variable, first_var=True)} >= 0")
+
+
     return variables_constraints
 
 def str_problem_to_standard_form(f_obj:str, constraints:list, detailed:bool = False, decimal:bool = False) -> str:
@@ -950,7 +1025,7 @@ def str_problem_to_standard_form(f_obj:str, constraints:list, detailed:bool = Fa
     # Transforma as restricoes primeiro
     # tipo_funcao, funcao_objetivo, constantes, variaveis = extrai_f_obj(problem[0])
     # constantes_e_variaveis = dict(zip(variaveis, constantes))
-    tipo_funcao, funcao_objetivo, constantes, variaveis = extrai_f_obj(f_obj)
+    tipo_funcao, _, constantes, variaveis = extrai_f_obj(f_obj)
     constantes_e_variaveis_fobj = dict(zip(variaveis, constantes))
     slack_var = 1
     new_restricoes = []
@@ -1022,6 +1097,7 @@ def str_problem_to_standard_form(f_obj:str, constraints:list, detailed:bool = Fa
             _, _, constants, variables = extrai_f_obj(new_f)
             constantes_e_variaveis_fobj = dict(zip(variables, constants))
             change_unbounded_variable_format_in_constraint(variavel, new_restricoes, detailed=detailed)
+            #assemble_variables_constraints(variaveis_irrestritas_modificadas, standard_form=True)
     
     if detailed:
         restricoes = new_restricoes
@@ -1892,10 +1968,10 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
             "detailed": True,
             "decimal": False,
             "result": {
-                "f_obj": "Min 2x1 - x2 + 3x'4 - 3x''4",
+                "f_obj": "Min 2x1 - x2 + 0x3 + 3x'4 - 3x''4 + 0s1 + 0s2",
                 "constraints": [
-                    "2x1 - x2 + x'4 - x''4 + s1 = 2/3",
-                    "x1 - x2 + x3 + s2 = 1",
+                    "2x1 - x2 + 0x3 + x'4 - x''4 + s1 + 0s2 = 2/3",
+                    "x1 - x2 + x3 + 0x'4 + 0x''4 + 0s1 + s2 = 1",
                     "x1 >= 0",
                     "x2 >= 0",
                     "x3 >= 0", 
@@ -1946,9 +2022,11 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 assert constraints == result["constraints"]
             except AssertionError as e:
                 logger.error(f"Erro no teste: {i + 1}")
-                logger.error(f"\nvalor calculado: {f_obj}, \nvalor esperado: {result['f_obj']}")
+                logger.error(f"\nvalor calculado: {f_obj.replace(' ','_')} \nvalor esperado: {result['f_obj'].replace(' ','_')}")
+                # logger.error(f"\nf_obj calculada:{f_obj.replace(' ',"_")} ")
+                
                 for i in range(len(constraints)):
-                    logger.error(f"\nrestrição calculada: {constraints[i]}, \nrestrição esperada: {result['constraints'][i]}")
+                    logger.error(f"\nrestrição calculada: {constraints[i].replace(' ','_')} \nrestrição esperada : {result['constraints'][i].replace(' ','_')}")
                     if constraints[i] != result["constraints"][i]:
                         logger.error(f"\n*******Erro na restrição {i + 1}*****\n {constraints[i]} != {result['constraints'][i]}")
                 raise e
@@ -2186,7 +2264,6 @@ def check_health_status():
 #                                    test_extrai_restricao=True,
 #                                    test_monta_f_obj=True,
 #                                    test_monta_restricao=True,)
-
 
 
 bateria_testes_str_padrao_problema(test_forma_padrao=True)
