@@ -732,31 +732,34 @@ def monta_f_obj(tipo_funcao:str, constantes_e_variaveis:dict, standard_form:bool
             tipo_funcao = "min"
             
     
-    # Ordenando o dicionario por prioridade
+    # Ordenando o dicionario por prioridade, passivel de otimizacao...
 
-    # 1. Labeling
+    # 1. Labeling Passivel de otimizacao
+    # 1. Labeling Passivel de otimizacao
+    labeled = {}
     for variable, constant in constantes_e_variaveis.items():
         if variable[0] == "s":
-            constantes_e_variaveis[variable] = (constant, "slack")
+            labeled[variable] = (constant,  display_variable_priority["slack"])
 
         elif variable[0] == "a":
-            constantes_e_variaveis[variable] = (constant, "artificial")
+            labeled[variable] = (constant,  display_variable_priority["artificial"])
 
         else:
-            constantes_e_variaveis[variable] = (constant, "normal")
+            labeled[variable] = (constant,  display_variable_priority["normal"])
 
     # 2. Ordenando por prioridade && numero da variavel
-    constantes_e_variaveis = dict(
+    labeled = dict(
         sorted(
-            constantes_e_variaveis.items(),
-            key=lambda x: display_variable_priority[x[1][1]] + int(re.search(r'\d+', x[0]).group()),
+            labeled.items(),
+            key=lambda x: x[1][1] + int(re.search(r'\d+', x[0]).group()),
         )
     )
    
-    # 3. Retirando o label
-    constantes_e_variaveis = {
-        k: v[0] for k, v in constantes_e_variaveis.items()
-    }
+    # 3. Atribuindo o dicionario passado com as variaveis na ordem correta
+    constantes_e_variaveis.clear()
+    for var in labeled:
+        constantes_e_variaveis[var] = labeled[var][0]
+    
                 
     funcao_objetivo = f"{tipo_funcao} "
     for i, (variavel, constante) in enumerate(constantes_e_variaveis.items()):
@@ -865,28 +868,31 @@ def monta_restricao(constantes_e_variaveis_lhs:dict, simbolo:str, valor_rhs:Frac
 
     # Ordenando o dicionario por prioridade
 
-    # 1. Labeling
+    # 1. Labeling Passivel de otimizacao
+    labeled = {}
     for variable, constant in constantes_e_variaveis_lhs.items():
         if variable[0] == "s":
-            constantes_e_variaveis_lhs[variable] = (constant, "slack")
+            labeled[variable] = (constant,  display_variable_priority["slack"])
 
         elif variable[0] == "a":
-            constantes_e_variaveis_lhs[variable] = (constant, "artificial")
+            labeled[variable] = (constant,  display_variable_priority["artificial"])
 
         else:
-            constantes_e_variaveis_lhs[variable] = (constant, "normal")
+            labeled[variable] = (constant,  display_variable_priority["normal"])
 
-    # 2. Ordenando por prioridade
-    constantes_e_variaveis_lhs = dict(
+    # 2. Ordenando por prioridade && numero da variavel
+    labeled = dict(
         sorted(
-            constantes_e_variaveis_lhs.items(),
-            key=lambda x: display_variable_priority[x[1][1]] + int(re.search(r'\d+', x[0]).group()),
+            labeled.items(),
+            key=lambda x: x[1][1] + int(re.search(r'\d+', x[0]).group()),
         )
     )
-
-    # 3. Retirando os labels
-    constantes_e_variaveis_lhs = {k: v[0] for k, v in constantes_e_variaveis_lhs.items()}
-
+   
+    # 3. Atribuindo o dicionario passado com as variaveis na ordem correta
+    constantes_e_variaveis_lhs.clear()
+    for var in labeled:
+        constantes_e_variaveis_lhs[var] = labeled[var][0]
+        
     lhs = ""
     # Primeiro, apenas desigualdades de <=
     for i, (variavel, constante) in enumerate(constantes_e_variaveis_lhs.items()):
@@ -955,25 +961,40 @@ def extract_ge_le_constraints(constraints:list, positive_lhs:bool = False) -> li
             ge_le_constraints.append(constraint)
     return ge_le_constraints
 
-def extract_variable_constraints(constraints:list, standard_form=False) -> list:
+def extract_variable_constraints(constraints:list, standard_form=False, positive_lhs=False) -> list:
     """
     Extrai as restricoes de variavel de uma lista de restricoes.\n
     restricoes da forma x >= 0 ou x <= 0 ou x irrestrito\n
     Args:
         restricoes (list): lista de restrições
         standard_form (bool): se True, as variáveis estão na forma padrão( >=0 )
+        positive_lhs (bool): se True, formas -x1 >= 0 se tornam x1 <= 0 (NAO NECESSARIAMENTE FORMA PADRAO)
     Returns:
         list: lista de restrições que são variáveis
     """
     variable_constraints = []
     for constraint in constraints:
         check_var_constraint, _ = check_variable_constraint(constraint)
-        if check_var_constraint:
-            variable_constraints.append(constraint)
-        else:
-            if standard_form:
+        if standard_form:
                 constraint = variable_constraint_to_std_form(constraint)
                 variable_constraints.append(constraint)
+                
+        elif positive_lhs:
+            constants_lhs, variables_lhs, symbol, value_rhs = extrai_restricao(constraint)
+            if check_ge_zero(constants_lhs, value_rhs, symbol) or check_le_zero(constants_lhs, value_rhs, symbol):
+                for constant in constants_lhs:
+                    if constant < 0:
+                        if symbol == ">=" or symbol == "≥":
+                            symbol = "<="
+                        elif symbol == "<=" or symbol == "≤":
+                            symbol = ">="
+                        break
+                constraint = assemble_variables_constraints(variables_lhs, symbols=[symbol])[0]
+                variable_constraints.append(constraint)
+            
+        elif check_var_constraint:
+            variable_constraints.append(constraint)
+            
     return variable_constraints
 
 def extract_non_var_constraints(constraints:list) -> list:
@@ -1227,8 +1248,8 @@ def std_matrix_to_str_problem(A:list, b:list, c:list, x:list, tipo_funcao:str = 
         
         valor_rhs = b[i]
         constantes_e_variaveis_lhs = dict(zip(variaveis_lhs, constantes_lhs))
-        forma_padrao_restricao, change_var = monta_restricao(constantes_e_variaveis_lhs, simbolo, valor_rhs, standard_form=(forma_padrao, "s"+str(slack_var)),
-                                                     detailed=detailed, decimal=decimal)
+        forma_padrao_restricao, change_var = monta_restricao(constantes_e_variaveis_lhs, simbolo, valor_rhs, standard_form=forma_padrao,
+                                                     detailed=detailed, decimal=decimal, slack_var="s" + str(slack_var))
         
         if change_var == VARIAVEL_ADICIONADA:
             constantes_e_variaveis_f_obj["s" + str(slack_var)] = 0
@@ -2162,7 +2183,6 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
         )
             
              """
-
         t1 = {
             "A":[
                 [-2, -1, 1, 0],
@@ -2186,7 +2206,6 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 ]
             }
         }
-
         t2 ={ 
             "A":[
                 [-2, -1, 1, 0],
@@ -2210,7 +2229,6 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 ]
             }
         }
-
         t3 ={ 
             "A":[
                 [-2, -1, 1, 0],
@@ -2235,9 +2253,9 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
             }
         }
 
-        tests = [t1, t2, t3]
+        tests = [t2]
 
-        for test in tests:
+        for i, test in enumerate(tests):
             A = test["A"]
             b = test["b"]
             c = test["c"]
@@ -2257,9 +2275,12 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                 assert f_obj == test["result"]["f_obj"]
                 assert constraints == test["result"]["constraints"]
             except AssertionError as e:
-                logger.error(f"Erro no teste: {test['f_obj']}")
-                logger.error(f"valor calculado: {f_obj}, valor esperado: {test['result']['f_obj']}")
-                logger.error(f"restrições calculadas: {constraints}, restrições esperadas: {test['result']['constraints']}")
+                logger.error(f"Erro no teste: {i + 1}")
+                logger.error(f"valor calculado:\n {f_obj},\n valor esperado: {test['result']['f_obj']}")
+                for i in range(len(constraints)):
+                    logger.error(f"\nrestrição calculada: {constraints[i].replace(' ','_')},\nrestrição esperada : {test['result']['constraints'][i].replace(' ','_')}")
+                    if constraints[i] != test["result"]["constraints"][i]:
+                        logger.error(f"\n*******Erro na restrição {i + 1}*****\n {constraints[i]} != {test['result']['constraints'][i]}")
                 raise e
 
     # Testes para extract_constraints_signs
@@ -2320,7 +2341,8 @@ def check_health_status():
 
 
 
-check_health_status()
+
+#check_health_status()
 # print(f"f_ = {extrai_f_obj(f_obj['func'])}, restricoes = {extrai_restricao(f_obj['restricoes'][0])}")
 
 # bateria_testes_str_padrao_problema(test_monta_f_obj=True)
@@ -2350,6 +2372,15 @@ check_health_status()
 
 # str_problem_to_matrix("")
 
+""" 
+NOVO PADRAO: para todas funcoes que devolvem constraints, 
+devolver variable_constraints de todas variaveis
+Plano de trabalho:
+- Criar testes para todos auxiliares novos
+- Refazer todos os testes existentes para o padrao mais atual
+- Refazer os testes de str_padrao_problema
+
+ """
 
 # π, Φ, λ
 

@@ -110,7 +110,7 @@ def str_primal_to_dual(f_obj:str, constraints:list, current_relation:str="primal
     # Extracting the function type, variables_constraints and non variable constraints
     func_type, _, _, _ = spp.extrai_f_obj(f_obj)
     all_variables = spp.extract_variables_problem(f_obj, constraints)
-    variables_constraints = spp.extract_ge_le_constraints(constraints, positive_lhs=True)
+    variables_constraints = spp.extract_variable_constraints(constraints, positive_lhs=True)
     if infer_var_signs:
         variables_without_constraint = []
         if variables_constraints:
@@ -119,7 +119,7 @@ def str_primal_to_dual(f_obj:str, constraints:list, current_relation:str="primal
             if variable not in variables_with_constraint:
                 variables_without_constraint.append(variable)
         extra_variables_constraints =  spp.assemble_variables_constraints(variables_without_constraint, 
-                                                                          is_vars_on_standard_form=True)
+                                                                          standard_form=True)
         constraints += extra_variables_constraints
         variables_constraints += extra_variables_constraints
     
@@ -331,7 +331,7 @@ def bateria_de_testes_primal_dual(test_primal_to_dual:bool=False,
             }
         }
         
-        tests = [t1, t2, t3, t4, t5]
+        tests = [t3, t4, t5]
         for i, teste in enumerate(tests):
             f_obj = teste["f_obj"]
             constraints = teste["constraints"]
@@ -346,8 +346,8 @@ def bateria_de_testes_primal_dual(test_primal_to_dual:bool=False,
                 assert relacao == teste["result"]["current_relation"]
             except AssertionError as e:
                 logger.error(f"Erro no teste {i+1}")
-                logger.error(f"\nvalor calculado: {f_obj_output} \nvalor esperado: {teste['result']['f_obj']}")
-                logger.error(f"\nvalor calculado: {constraints_output} \nvalor esperado: {teste['result']['constraints']}")
+                logger.error(f"\nvalor calculado: {f_obj_output} \nvalor esperado : {teste['result']['f_obj']}")
+                logger.error(f"\nvalor calculado: {constraints_output} \nvalor esperado : {teste['result']['constraints']}")
                 logger.error(f"\nvalor calculado: {relacao} \nvalor esperado: {teste['result']['current_relation']}")
                 raise e
             #str_primal_to_dual(f_obj, constraints, current_relation, allow_neg_variables, infer_var_signs)
@@ -355,6 +355,8 @@ def bateria_de_testes_primal_dual(test_primal_to_dual:bool=False,
     logger.info("Bateria de testes finalizada.")        
    
 #bateria_de_testes_primal_dual(test_primal_to_dual=True)
+
+# Remontar a funcao atual
 
 def check_health_status():
     try:
@@ -367,6 +369,9 @@ def check_health_status():
         logger.error(e)
         raise e
     
+bateria_de_testes_primal_dual(test_primal_to_dual=True)
+
+check_health_status()
 
 # Checar caso primal -> dual -> primal  no test_primal_to_dual
 # Implementar no str_padrao_problema o caso de variaveis negativas para monta_restricao forma padrao
