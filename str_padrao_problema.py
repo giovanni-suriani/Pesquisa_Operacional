@@ -84,27 +84,6 @@ def convert_if_str_float_is_int(value:str) -> str:
     else:
         return value
 
-def display_matrix_f_obj1(A:list, b:list, c:list, x:list):
-    """
-    Exibe a matriz de coeficientes A, b, c e x de forma bonita.
-    Args:
-        A (list): matriz de coeficientes
-        b (list): vetor de constantes
-        c (list): vetor de coeficientes da função objetivo
-        x (list): lista de variáveis
-    """
-    A_matrix = Matrix(A)
-    B_matrix = Matrix(b)
-    C_matrix = Matrix(c)
-    X_matrix = Matrix(x)
-
-    trecho1 = f"\nMatriz A\n{pretty(A_matrix)}\n Matriz B\n{pretty(B_matrix)}\n"
-    trecho2 = f"\nMatriz C\n{pretty(C_matrix)}\n Matriz X\n{pretty(X_matrix)}"
-    return trecho1 + trecho2
-
-    return(f"\nMatriz A \n" + pretty(A_matrix) + "\n Matriz B \n" + pretty(B_matrix) + "\n Matriz C \n" + pretty(C_matrix) 
-                 + "\n Matriz X \n" + pretty(X_matrix))
-
 from sympy import Matrix, pretty
 
 
@@ -205,7 +184,7 @@ def check_le_zero(constants_lhs:list, value_rhs:list, symbol:str = "≤") -> boo
 
 def check_variable_constraint_ge_le__positive(constraint:str) -> bool:
     """ 
-    Checa se a restricao eh do tipo x1 >= 0 ou  -x1 <= 0, ou seja, positivas
+    Checa se a restricao eh do tipo x1 >= 0 ou  -x1 <= 0, ou seja, a variavel eh positiva
     Args:
         constraint (str): string da restrição, ex: "x4 ≥ 0"
     Returns:
@@ -260,6 +239,7 @@ def check_variable_constraint_std_form(constraint:str) -> bool:
     """
     Checa se a restrição está na forma padrão (xi >= 0).
     Args:
+        constraint (str): string da restrição, ex: "x4 ≥ 0"
     """
     allowed_values = [0,1]
     constants_lhs, variables_lhs, symbol, value_rhs = extrai_restricao(constraint)
@@ -1293,6 +1273,12 @@ def std_matrix_to_str_problem(A:list, b:list, c:list, x:list, tipo_funcao:str = 
 def bateria_testes_utilitarios(test_standard_display_variable:bool=False,
                                 test_check_ge_zero:bool=False,
                                 test_check_le_zero:bool=False,
+                                test_check_variable_constraint:bool=False,
+                                test_check_variable_Constraint_std_form:bool=False,
+                                test_extract_non_var_constraints:bool=False,
+                                test_extract_variable_constraints:bool=False,
+                                test_remove_variable_constraints:bool=False,
+                                test_variable_constraints:bool=False,
                                 test_remove_ge_le_constraints:bool=False,
                                 test_change_variable_sign_in_f_obj:bool=False,
                                 test_change_variable_sign_in_constraints:bool=False,
@@ -1492,6 +1478,24 @@ def bateria_testes_utilitarios(test_standard_display_variable:bool=False,
             constants, _, symbol, value_rhs = extrai_restricao(constraint)
             assert check_le_zero(constants_lhs=constants, value_rhs=value_rhs, symbol=symbol) == result, f"Erro: {constraint} != {result}"
 
+    if test_check_variable_constraint:
+        pass
+    
+    if test_check_variable_Constraint_std_form:
+        pass
+    
+    if test_variable_constraints:   
+        pass
+    
+    if test_remove_variable_constraints:
+        pass
+    
+    if test_extract_variable_constraints:
+        pass
+    
+    if test_extract_non_var_constraints:
+        pass
+    
     # Testes para remove_ge_le_constraints
     if test_remove_ge_le_constraints:
         t1 = "2x1 + π2 + 3x4 ≥ 2/3"
@@ -1643,6 +1647,7 @@ def bateria_testes_str_padrao_problema(test_extrai_f_obj:bool = False,
                    test_extract_constraints_signs:bool = False,
                    test_assemble_variables_constraints:bool = False,
                    ):
+    
     # Testes para extrair_f_obj
     if test_extrai_f_obj:
         logger.info(f"Iniciando testes para extrair_f_obj")
@@ -2330,6 +2335,14 @@ def check_health_status():
         logger.error(e)
         raise e
 
+bateria_testes_utilitarios(
+    test_check_variable_constraint=True,
+    test_check_variable_Constraint_std_form=True,
+    test_variable_constraints=True,
+    test_remove_variable_constraints=True,
+    test_extract_variable_constraints=True,
+    test_extract_non_var_constraints=True,
+)
 
 # bateria_testes_str_padrao_problema(test_extrai_f_obj=True,
 #                                    test_extrai_restricao=True,
@@ -2340,9 +2353,7 @@ def check_health_status():
 # bateria_testes_str_padrao_problema(test_forma_padrao=True)
 
 
-
-
-#check_health_status()
+# check_health_status()
 # print(f"f_ = {extrai_f_obj(f_obj['func'])}, restricoes = {extrai_restricao(f_obj['restricoes'][0])}")
 
 # bateria_testes_str_padrao_problema(test_monta_f_obj=True)
